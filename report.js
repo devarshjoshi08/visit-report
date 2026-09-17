@@ -100,13 +100,22 @@
       var args = Array.prototype.slice.call(arguments);
       return args.every(function (h) { return head.indexOf(h) !== -1; });
     };
-    var name = key(sheetName || '');
+    var row2 = (rows[1] || []).map(key);
+    var row3 = (rows[2] || []).map(key);
+    var name = key(sheetName || '').replace(/\.(csv|tsv|xlsx|xls)$/, '');
+
+    /* The shape tests have to be strict. The SS Details tab (the staff list) also carries a
+       "Project Name" header, and a loose test picked it up as the Report template, which
+       produced a table full of zeros. */
+    if (has('emp no') || name.indexOf('ss details') === 0) return null;
+
     if (has('school code and name') && (has('date') || has('added time'))) return 'log';
-    if (has('schoolcode') && (has('po.name') || has('state'))) return 'schools';
-    if (head.indexOf('project name') !== -1 || (rows[1] || []).map(key).indexOf('state') !== -1) return 'report';
+    if (has('schoolcode') && has('po.name')) return 'schools';
+    if ((row2.indexOf('state') !== -1 && row2.indexOf('grand total') !== -1) || row3.indexOf('total ss') !== -1) return 'report';
+
     if (name.indexOf('daily activity') === 0) return 'log';
     if (name.indexOf('school details') === 0) return 'schools';
-    if (name.indexOf('report') === 0) return 'report';
+    if (name === 'report') return 'report';
     return null;
   }
 

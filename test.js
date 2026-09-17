@@ -54,6 +54,18 @@ eq('log', V.classify(V.parseCSV(logCSV), 'Daily Activity tracker 01 Oct'), 'log'
 eq('schools', V.classify(V.parseCSV(schoolsCSV), 'School Details'), 'schools');
 eq('report', V.classify(V.parseCSV(reportCSV), 'Report'), 'report');
 
+/* the staff list also carries a "Project Name" header — it must never look like the report */
+const ssDetailsCSV = [
+  'Emp No,Name,Reporting Manager,Official Email,Mobile No,Personal Email Address,Organization Left,District,Location,State,Model of Implementation,Number of Schools,Number of Students,Project Manager,Project Name,SBU Name',
+  'EI-OPS-001,Saurav Kumar,Anil Mishra,a@example.com,9142347718,,No,Patna,Bangalore,Bihar,At School,,,Naman Kumar,Great Ship CSR Foundation,Ei Shiksha',
+  'EI-OPS-002,Rishav Kumar,Anil Mishra,b@example.com,6201370080,,No,Patna,Bangalore,Bihar,At School,,,Naman Kumar,Great Ship CSR Foundation,Ei Shiksha'
+].join('\n');
+eq('SS Details is ignored', V.classify(V.parseCSV(ssDetailsCSV), 'SS Details'), null);
+eq('SS Details ignored even when the file is named after the workbook',
+  V.classify(V.parseCSV(ssDetailsCSV), 'Daily Activity tracker from 01 Oct 25.csv'), null);
+eq('a sheet with State but no Grand Total is not a template',
+  V.classify(V.parseCSV('a,b,c\nx,State,y\n1,2,3'), 'Something else'), null);
+
 const log = V.parseLog(V.parseCSV(logCSV));
 const sd = V.parseSchools(V.parseCSV(schoolsCSV));
 const tpl = V.parseTemplate(V.parseCSV(reportCSV));

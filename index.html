@@ -109,8 +109,9 @@
       <p><b>Drop CSV or Excel files here</b></p>
       <button class="btn" type="button" id="pick">Choose files</button>
       <input type="file" id="file" multiple accept=".csv,.tsv,.xlsx,.xls">
-      <p class="hint">Files stay on this device. Delete the downloads afterwards if you like.</p>
+      <p class="hint">Files stay on this device, and the page remembers the last load &mdash; reload files only when you want fresher data. Delete the downloads afterwards if you like.</p>
     </div>
+    <div class="row"><button class="btn" type="button" id="clear" hidden>Forget the saved export</button></div>
     <div class="sources" id="sources"></div>
     <details id="urlWrap">
       <summary>Or pull from published links (no download)</summary>
@@ -204,6 +205,41 @@
     return rows.join('\n');
   })();
 
+  /* remember the last load on this device, so the files only go in once */
+  var CACHE = 'vr.data.v1';
+  function saveCache() {
+    try {
+      localStorage.setItem(CACHE, JSON.stringify({
+        savedAt: Date.now(),
+        visits: state.visits,
+        schools: state.schools,
+        template: state.template,
+        skippedNoSchool: state.logInfo ? state.logInfo.skippedNoSchool : 0,
+        sources: state.sources.map(function (s) { return { label: s.label, kind: s.kind, file: s.file }; })
+      }));
+      $('clear').hidden = false;
+    } catch (e) {
+      $('copyNote').textContent = 'Loaded, but too large to remember on this device — you will need to load the files again next time.';
+    }
+  }
+  function loadCache() {
+    try {
+      var raw = localStorage.getItem(CACHE);
+      if (!raw) return false;
+      var p = JSON.parse(raw);
+      if (!p || !p.visits || !p.visits.length || !p.schools) return false;
+      state.visits = p.visits;
+      state.schools = p.schools;
+      state.template = p.template || null;
+      state.logInfo = { visits: p.visits, skippedNoDate: 0, skippedNoSchool: p.skippedNoSchool || 0 };
+      state.sample = false;
+      state.ssOverride = null;
+      state.sources = (p.sources || []).concat([{ kind: 'saved', label: 'Restored from this device — loaded ' + new Date(p.savedAt).toLocaleString() }]);
+      $('clear').hidden = false;
+      return true;
+    } catch (e) { return false; }
+  }
+
   function loadSample() {
     var log = V.parseLog(V.parseCSV(SAMPLE_LOG));
     var sd = V.parseSchools(V.parseCSV(SAMPLE_SCHOOLS));
@@ -275,6 +311,7 @@
       setBanner('');
       resetRange();
       render();
+      saveCache();
     }).catch(function (err) { setBanner(err.message, 'warn'); });
   }
 
@@ -290,16 +327,22 @@
     d.setUTCDate(d.getUTCDate() + days);
     return d.toISOString().slice(0, 10);
   }
+  function today() {
+    var d = new Date();
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
   function applyPreset(which) {
     var r = fileRange();
     if (!r) return;
+    // A mistyped future date in the log shouldn't drag the range with it
+    var last = r.max < today() ? r.max : today();
     var from = r.min, to = r.max;
     if (which === 'satfri') {
-      var day = new Date(r.max + 'T00:00:00Z').getUTCDay(); // 0 Sun … 6 Sat
-      var toFriday = (day - 5 + 7) % 7;                     // most recent Friday on or before the last date
-      to = shift(r.max, -toFriday); from = shift(to, -6);
-    } else if (which === '7') { to = r.max; from = shift(r.max, -6); }
-    else if (which === 'month') { to = r.max; from = r.max.slice(0, 8) + '01'; }
+      var day = new Date(last + 'T00:00:00Z').getUTCDay(); // 0 Sun … 6 Sat
+      var toFriday = (day - 5 + 7) % 7;                    // most recent Friday on or before that
+      to = shift(last, -toFriday); from = shift(to, -6);
+    } else if (which === '7') { to = last; from = shift(last, -6); }
+    else if (which === 'month') { to = last; from = last.slice(0, 8) + '01'; }
     $('from').value = from; $('to').value = to;
   }
   function resetRange() { $('preset').value = 'satfri'; applyPreset('satfri'); }
@@ -355,6 +398,9 @@
     ];
     if (s.unknownVisits) bits.push(['Entries with a code not in School Details', s.unknownVisits]);
     if (state.logInfo && state.logInfo.skippedNoSchool) bits.push(['Log rows with no school', state.logInfo.skippedNoSchool]);
+    var t = today();
+    var ahead = (state.visits || []).filter(function (v) { return v.date > t; }).length;
+    if (ahead) bits.push(['Entries dated after today — likely typos', ahead]);
     $('chips').innerHTML = bits.map(function (b) {
       return '<span class="chip">' + esc(b[0]) + ' <b>' + b[1].toLocaleString() + '</b></span>';
     }).join('');
@@ -508,7 +554,15 @@
     $('copyNote').textContent = 'Downloads are blocked in this preview — use Copy table, or open the GitHub Pages copy.';
   }
 
-  loadSample();
+  $('clear').addEventListener('click', function () {
+    try { localStorage.removeItem(CACHE); } catch (e) {}
+    $('clear').hidden = true;
+    loadSample();
+    resetRange();
+    render();
+  });
+
+  if (!loadCache()) loadSample();
   resetRange();
   render();
 })();

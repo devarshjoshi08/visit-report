@@ -27,7 +27,11 @@ Everything runs in the browser. No server, no Zoho login, no data leaves the dev
 4. **Copy table** puts it on the clipboard ready to paste into Excel, Zoho Sheet or an email. **Download Excel** gives a two-sheet workbook: the report, plus the school-by-school list.
 5. Delete the CSV downloads afterwards if you prefer not to keep them.
 
-A full `.xlsx` download of the workbook also works, but the sheet's huge formula grid makes that file slow to load. The two CSVs are much faster.
+The page remembers the last load on that device, so reopening it shows the same data without loading files again — use **Forget the saved export** to clear it.
+
+A full `.xlsx` download of the workbook also works (the whole workbook is about 5.5 MB), but the sheet's formula grid makes it slow to open in a browser. The two CSVs are a second's work.
+
+Sheets are recognised by shape, not by file name, so you can drop every tab at once. The **SS Details** staff list is ignored on purpose: it also has a "Project Name" column, and an earlier version mistook it for the Report template and produced a table of zeros.
 
 ### No download at all (optional)
 
@@ -40,7 +44,10 @@ If the sheet owner publishes those two tabs in Zoho (**File → Publish**) and g
 - **Grand Total** copies the sheet's own formula, which adds columns E–Q and so leaves out the first two (Andhra Pradesh and Bihar). Switch the dropdown to *Add up every column* for the honest total.
 - **Average %Visits** = visits in the period ÷ (Total SS × days × 6/7) — the Report tab's formula. *Total SS* comes from the Report export and can be edited in the table; edits recalculate the row.
 - Log rows with no school in brackets (project coordination, leave, and so on) are skipped. School codes that aren't in School Details are skipped too, and both counts are shown above the table.
-- Dates are read day-first: `05/09/2026` is 5 September.
+- Dates are read day-first: `05/09/2026` is 5 September. Entries dated after today are counted and flagged above the table — the log had one row typed as 18 Sep 2026.
+- The default range is the last full Saturday–Friday week up to today, so a future-dated typo can't drag it forward.
+
+Checked against the live workbook: for 5–11 Sep 2026 the page produces 19 / 0 / 28 / 31 / 25 / 26 / 20 school-days, matching an independent count of the same file.
 
 ## Maintenance
 
