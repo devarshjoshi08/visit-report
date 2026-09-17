@@ -1,0 +1,49 @@
+# School Visit Report Builder
+
+A single web page that rebuilds the **Report** table from the *Daily Activity tracker from 01 Oct 25* Zoho sheet for any date range you pick — schools visited per day, split by project and state.
+
+Everything runs in the browser. No server, no Zoho login, no data leaves the device.
+
+## Files
+
+| File | What it is |
+|---|---|
+| `index.html` | The page: file loading, date range, table, copy/download buttons |
+| `report.js` | The counting logic, kept separate so it can be tested |
+| `test.js` | `node test.js` — checks the logic against a synthetic tracker layout |
+
+## Put it online (GitHub Pages)
+
+1. Create a new **public** repository, e.g. `visit-report`.
+2. Upload `index.html` and `report.js` to the root of the `main` branch (`test.js` is optional).
+3. **Settings → Pages → Build and deployment**: Source = *Deploy from a branch*, Branch = `main`, folder = `/ (root)`. Save.
+4. After a minute the link appears at the top of that Pages screen: `https://<your-user>.github.io/visit-report/`. Share that link — anyone who opens it gets the tool, and their files stay on their own machine.
+
+## Weekly use
+
+1. In the Zoho sheet, **File → Download as → CSV** on the **Daily Activity tracker 01 Oct** tab, then the same on **School Details**. Do the **Report** tab too if you want its current *Total SS* row.
+2. Open the page, drop the CSV files on it.
+3. Pick the range — *Last full Saturday – Friday week* is the default — or set any From/To dates.
+4. **Copy table** puts it on the clipboard ready to paste into Excel, Zoho Sheet or an email. **Download Excel** gives a two-sheet workbook: the report, plus the school-by-school list.
+5. Delete the CSV downloads afterwards if you prefer not to keep them.
+
+A full `.xlsx` download of the workbook also works, but the sheet's huge formula grid makes that file slow to load. The two CSVs are much faster.
+
+### No download at all (optional)
+
+If the sheet owner publishes those two tabs in Zoho (**File → Publish**) and gives you the CSV links, paste them under *"Or pull from published links"* and the page fetches them itself. Zoho has to allow the page to read those links; if it refuses, the CSV route above still works.
+
+## How the numbers are produced
+
+- **One school counts once per day**, however many people logged a visit to it. Same rule as the Report tab's `COUNTIFS(... > 0)`.
+- A school lands in a column when its **state** matches and the column's **project** is either `All` or the school's own `po.name` (from School Details).
+- **Grand Total** copies the sheet's own formula, which adds columns E–Q and so leaves out the first two (Andhra Pradesh and Bihar). Switch the dropdown to *Add up every column* for the honest total.
+- **Average %Visits** = visits in the period ÷ (Total SS × days × 6/7) — the Report tab's formula. *Total SS* comes from the Report export and can be edited in the table; edits recalculate the row.
+- Log rows with no school in brackets (project coordination, leave, and so on) are skipped. School codes that aren't in School Details are skipped too, and both counts are shown above the table.
+- Dates are read day-first: `05/09/2026` is 5 September.
+
+## Maintenance
+
+- **Columns changed in the Report tab?** Export the Report tab as CSV and drop it in — the page takes its columns and Total SS from there. Without it, the built-in list (15 project/state columns, as of 11 Sep 2026) is used.
+- **Logic changes:** edit `report.js` and run `node test.js` before pushing.
+- The page loads SheetJS 0.18.5 from cdnjs for `.xlsx` reading and writing. CSV reading and the report itself work even if that script is blocked.

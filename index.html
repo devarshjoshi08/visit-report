@@ -1,0 +1,515 @@
+<title>School Visit Report Builder</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ground:#F4F6F3; --surface:#FFFFFF; --surface-2:#EEF2EF;
+    --ink:#16211F; --muted:#5C6B66; --line:#DBE2DE;
+    --accent:#0E6E62; --accent-wash:#E3F0ED; --accent-ink:#0B5850;
+    --flag:#A04A08; --flag-wash:#FBEEE2;
+    --shadow:0 1px 2px rgba(22,33,31,.06), 0 8px 24px rgba(22,33,31,.05);
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#0F1513; --surface:#18201E; --surface-2:#1E2725;
+      --ink:#E9EFEC; --muted:#9AA9A4; --line:#2A3633;
+      --accent:#3BBBA7; --accent-wash:#123029; --accent-ink:#8FD9CC;
+      --flag:#E0A165; --flag-wash:#2E2418;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0F1513; --surface:#18201E; --surface-2:#1E2725;
+    --ink:#E9EFEC; --muted:#9AA9A4; --line:#2A3633;
+    --accent:#3BBBA7; --accent-wash:#123029; --accent-ink:#8FD9CC;
+    --flag:#E0A165; --flag-wash:#2E2418;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size:15px; line-height:1.5;
+  }
+  .wrap{max-width:1140px; margin:0 auto; padding-inline:20px; padding-block:32px 72px; display:flex; flex-direction:column; gap:26px;}
+  h1{font-size:27px; font-weight:600; letter-spacing:-.02em; margin:0; text-wrap:balance;}
+  h2{font-size:15px; font-weight:600; margin:0; letter-spacing:-.01em;}
+  p{margin:0;}
+  .eyebrow{font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;}
+  .lede{color:var(--muted); max-width:66ch;}
+  a{color:var(--accent-ink);}
+
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow); padding:18px 18px 20px; display:flex; flex-direction:column; gap:14px;}
+  .step{display:flex; align-items:baseline; gap:10px;}
+  .step .n{font-family:"IBM Plex Mono", monospace; font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:4px; padding:1px 6px;}
+  .hint{color:var(--muted); font-size:13px;}
+
+  .drop{border:1.5px dashed var(--line); border-radius:8px; background:var(--surface-2); padding:22px 16px; text-align:center; display:flex; flex-direction:column; gap:10px; align-items:center; transition:border-color .15s, background .15s;}
+  .drop.over{border-color:var(--accent); background:var(--accent-wash);}
+  input[type=file]{display:none;}
+  .btn{font:inherit; font-size:14px; font-weight:500; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); padding:8px 14px; cursor:pointer;}
+  .btn:hover{border-color:var(--accent); color:var(--accent-ink);}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .btn.primary:hover{background:var(--accent-ink); color:#fff;}
+  .btn:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  .btn[disabled]{opacity:.45; cursor:not-allowed;}
+  .row{display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;}
+  .field{display:flex; flex-direction:column; gap:4px;}
+  .field label{font-size:12px; color:var(--muted);}
+  input[type=date], select{font:inherit; font-size:14px; padding:7px 9px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink);}
+
+  .sources{display:flex; flex-direction:column; gap:6px; font-size:13px;}
+  .src{display:flex; gap:8px; align-items:baseline;}
+  .tag{font-family:"IBM Plex Mono", monospace; font-size:11px; padding:1px 6px; border-radius:4px; background:var(--accent-wash); color:var(--accent-ink); white-space:nowrap;}
+  .tag.warn{background:var(--flag-wash); color:var(--flag);}
+
+  .chips{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip{background:var(--surface-2); border:1px solid var(--line); border-radius:999px; padding:5px 12px; font-size:13px; display:flex; gap:7px; align-items:baseline;}
+  .chip b{font-family:"IBM Plex Mono", monospace; font-weight:500; font-size:14px;}
+
+  .banner{border:1px solid var(--line); background:var(--flag-wash); color:var(--flag); border-radius:8px; padding:9px 12px; font-size:13px;}
+  .banner.sample{background:var(--accent-wash); color:var(--accent-ink); border-color:transparent;}
+
+  .scroll{overflow-x:auto; border:1px solid var(--line); border-radius:8px; background:var(--surface);}
+  table{border-collapse:separate; border-spacing:0; width:100%; font-size:13px; font-variant-numeric:tabular-nums;}
+  th, td{padding:7px 10px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap;}
+  thead th{position:sticky; top:0; background:var(--surface-2); font-weight:500; z-index:2;}
+  th.lab, td.lab{text-align:left; position:sticky; left:0; background:var(--surface); z-index:1; min-width:168px; border-right:1px solid var(--line);}
+  thead th.lab{background:var(--surface-2); z-index:3;}
+  tr.proj th{font-size:11px; color:var(--muted); font-weight:500; letter-spacing:.02em;}
+  tr.ss td, tr.ss th{background:var(--surface-2);}
+  tr.avg td, tr.avg th{background:var(--surface-2); color:var(--muted);}
+  tr.total td, tr.total th{font-weight:600; background:var(--accent-wash); color:var(--accent-ink); border-bottom:none;}
+  td.zero{color:var(--muted); opacity:.45;}
+  td.gt{font-weight:600;}
+  tbody tr:hover td:not(.lab){background:var(--accent-wash);}
+  .ssinput{width:56px; font:inherit; font-size:12px; font-variant-numeric:tabular-nums; text-align:right; border:1px solid var(--line); border-radius:5px; padding:2px 5px; background:var(--surface); color:var(--ink);}
+
+  details{border-top:1px solid var(--line); padding-top:12px;}
+  summary{cursor:pointer; font-size:14px; font-weight:500;}
+  footer{color:var(--muted); font-size:12.5px; border-top:1px solid var(--line); padding-top:16px; display:flex; flex-direction:column; gap:6px;}
+  code{font-family:"IBM Plex Mono", monospace; font-size:12px; background:var(--surface-2); padding:1px 5px; border-radius:4px;}
+  @media (max-width:560px){ .wrap{padding-block:22px 56px;} h1{font-size:23px;} th.lab, td.lab{min-width:132px;} }
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Ei field operations</p>
+    <h1>School Visit Report Builder</h1>
+    <p class="lede">Pick a date range and get the same daily table the Report tab produces &mdash; schools visited per day, by project and state. The tracker export is read here in your browser; nothing is uploaded anywhere.</p>
+  </header>
+
+  <section class="card">
+    <div class="step"><span class="n">1</span><h2>Load the tracker export</h2></div>
+    <p class="hint">In the Zoho sheet: <b>File &rsaquo; Download as &rsaquo; CSV</b> on the <b>Daily Activity tracker 01 Oct</b> tab, then the same on <b>School Details</b> (and <b>Report</b> if you want its Total SS row). Drop all of them below. A full <code>.xlsx</code> download of the workbook works too, but it is much slower to load.</p>
+    <div class="drop" id="drop">
+      <p><b>Drop CSV or Excel files here</b></p>
+      <button class="btn" type="button" id="pick">Choose files</button>
+      <input type="file" id="file" multiple accept=".csv,.tsv,.xlsx,.xls">
+      <p class="hint">Files stay on this device. Delete the downloads afterwards if you like.</p>
+    </div>
+    <div class="sources" id="sources"></div>
+    <details id="urlWrap">
+      <summary>Or pull from published links (no download)</summary>
+      <p class="hint" style="margin-top:10px;">If the sheet owner publishes those tabs in Zoho (<b>File &rsaquo; Publish</b>) and gives you CSV links, paste them here and the page fetches them each time. Links are remembered on this device only, and this works on the hosted copy of this page, not inside a preview.</p>
+      <div class="row" style="margin-top:10px;">
+        <div class="field" style="flex:1 1 280px;"><label for="urlLog">Activity log CSV link</label><input type="url" id="urlLog" placeholder="https://sheet.zoho.in/…" style="font:inherit; font-size:13px; padding:7px 9px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); width:100%;"></div>
+        <div class="field" style="flex:1 1 280px;"><label for="urlSchools">School Details CSV link</label><input type="url" id="urlSchools" placeholder="https://sheet.zoho.in/…" style="font:inherit; font-size:13px; padding:7px 9px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); width:100%;"></div>
+        <button class="btn" type="button" id="fetchUrls">Fetch</button>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <div class="step"><span class="n">2</span><h2>Choose the dates</h2></div>
+    <div class="row">
+      <div class="field"><label for="preset">Quick pick</label>
+        <select id="preset">
+          <option value="satfri">Last full Saturday &ndash; Friday week</option>
+          <option value="7">Last 7 days in the file</option>
+          <option value="month">Month to date in the file</option>
+          <option value="all">Everything in the file</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="field"><label for="from">From</label><input type="date" id="from"></div>
+      <div class="field"><label for="to">To</label><input type="date" id="to"></div>
+      <div class="field"><label for="gt">Grand Total</label>
+        <select id="gt">
+          <option value="sheet">Match the sheet (leaves out first 2 columns)</option>
+          <option value="all">Add up every column</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="step"><span class="n">3</span><h2>Take the report</h2></div>
+    <div id="banner"></div>
+    <div class="chips" id="chips"></div>
+    <div class="scroll"><table id="table"></table></div>
+    <div class="row">
+      <button class="btn primary" type="button" id="copy">Copy table</button>
+      <button class="btn" type="button" id="xlsx">Download Excel</button>
+      <button class="btn" type="button" id="csv">Download CSV</button>
+      <span class="hint" id="copyNote"></span>
+    </div>
+    <details id="detailWrap">
+      <summary>School-by-school list for this range</summary>
+      <div class="scroll" style="margin-top:12px; max-height:340px; overflow-y:auto;"><table id="detail"></table></div>
+      <div class="row" style="margin-top:10px;"><button class="btn" type="button" id="copyDetail">Copy list</button></div>
+    </details>
+  </section>
+
+  <footer>
+    <p><b>How a day is counted:</b> one school counts once per day, however many people logged a visit to it. A school lands in a column when its state matches and the column's project is <i>All</i> or matches that school's <code>po.name</code>. This is the same rule the Report tab uses.</p>
+    <p><b>Average %Visits</b> uses the Report tab's own formula: visits in the period &divide; (Total SS &times; days &times; 6/7). Total SS comes from the Report export, and you can edit the values in the table.</p>
+    <p>Log rows with no school in brackets (project calls, leave, and so on) are skipped, and so are school codes that are missing from School Details &mdash; both are counted for you above the table.</p>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="report.js"></script>
+<script>
+(function () {
+  'use strict';
+  var V = window.VisitReport;
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { visits: null, schools: null, template: null, logInfo: null, sources: [], sample: true, ssOverride: null };
+
+  /* ---------- sample data, so the page opens in a working state ---------- */
+  var SAMPLE_SCHOOLS = 'SL No,schoolCode,name,medium,state,city,district,ward,connectivity,dualLogin,po.name,School code and Name\n' +
+    '1,111111,GPS Example Alpha,Hindi,Himachal Pradesh,,Shimla,,,,Prevail,(111111) GPS Example Alpha\n' +
+    '2,222222,GPS Example Beta,Hindi,Himachal Pradesh,,Mandi,,,,P&G,(222222) GPS Example Beta\n' +
+    '3,333333,GHS Example Gamma,Hindi,Rajasthan,,Jaipur,,,,P&G,(333333) GHS Example Gamma\n' +
+    '4,444444,ZPHS Example Delta,Telugu,Telangana,,Khammam,,,,Amazon Future Engineer,(444444) ZPHS Example Delta\n' +
+    '5,555555,GSSS Example Epsilon,Hindi,Himachal Pradesh,,Solan,,,,Bharat EdTech Initiatives,(555555) GSSS Example Epsilon';
+  var SAMPLE_LOG = (function () {
+    var rows = ['Added Time,SchoolCode,Project name,Name,HRMS ID,Mail ID,Reporting Manager,Date,Work Done on the Day,In Time,Out Time,School Code and Name'];
+    var codes = ['111111', '222222', '333333', '444444', '555555'];
+    var names = ['GPS Example Alpha', 'GPS Example Beta', 'GHS Example Gamma', 'ZPHS Example Delta', 'GSSS Example Epsilon'];
+    var today = new Date();
+    for (var back = 13; back >= 0; back--) {
+      var d = new Date(today.getTime() - back * 86400000);
+      if (d.getDay() === 0) continue; // no Sunday visits
+      var n = (back % 4) + 1;
+      for (var i = 0; i < n; i++) {
+        var j = (back + i) % codes.length;
+        rows.push('x,,,Field Executive,EI' + j + ',,,' + d.toISOString().slice(0, 10) + ',School Visit,09:00 AM,3:00 PM,(' + codes[j] + ') ' + names[j]);
+      }
+    }
+    return rows.join('\n');
+  })();
+
+  function loadSample() {
+    var log = V.parseLog(V.parseCSV(SAMPLE_LOG));
+    var sd = V.parseSchools(V.parseCSV(SAMPLE_SCHOOLS));
+    state.visits = log.visits; state.logInfo = log; state.schools = sd.schools;
+    state.template = null; state.sample = true; state.ssOverride = null;
+    state.sources = [{ label: 'Sample data — load your export to replace it', kind: 'sample' }];
+  }
+
+  /* ---------- reading files ---------- */
+  function readFile(file) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onerror = function () { reject(new Error('Could not read ' + file.name)); };
+      if (/\.(xlsx|xls)$/i.test(file.name)) {
+        fr.onload = function () {
+          try {
+            var wb = XLSX.read(new Uint8Array(fr.result), { type: 'array', cellDates: true });
+            var sheets = wb.SheetNames.map(function (name) {
+              return { name: name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: '', blankrows: false }) };
+            });
+            resolve({ file: file.name, sheets: sheets });
+          } catch (e) { reject(new Error(file.name + ': ' + e.message)); }
+        };
+        fr.readAsArrayBuffer(file);
+      } else {
+        fr.onload = function () { resolve({ file: file.name, sheets: [{ name: file.name, rows: V.parseCSV(fr.result) }] }); };
+        fr.readAsText(file);
+      }
+    });
+  }
+
+  function ingest(files) {
+    var list = Array.prototype.slice.call(files);
+    if (!list.length) return;
+    setBanner('Reading ' + list.length + ' file' + (list.length > 1 ? 's' : '') + '…');
+    Promise.all(list.map(readFile)).then(function (results) {
+      var found = [];
+      results.forEach(function (res) {
+        res.sheets.forEach(function (sheet) {
+          var kind = V.classify(sheet.rows, sheet.name) || V.classify(sheet.rows, res.file);
+          if (kind === 'log') {
+            var log = V.parseLog(sheet.rows);
+            if (!log.visits.length) return;
+            if (state.sample) { state.visits = []; state.logInfo = { visits: [], skippedNoDate: 0, skippedNoSchool: 0 }; state.sample = false; state.sources = []; }
+            state.visits = (state.visits || []).concat(log.visits);
+            state.logInfo = {
+              visits: state.visits,
+              skippedNoDate: (state.logInfo ? state.logInfo.skippedNoDate : 0) + log.skippedNoDate,
+              skippedNoSchool: (state.logInfo ? state.logInfo.skippedNoSchool : 0) + log.skippedNoSchool
+            };
+            found.push({ label: 'Activity log — ' + log.visits.length.toLocaleString() + ' school visits', kind: 'log', file: res.file });
+          } else if (kind === 'schools') {
+            var sd = V.parseSchools(sheet.rows);
+            if (!sd.count) return;
+            if (state.sample) { state.sample = false; state.sources = []; }
+            state.schools = sd.schools;
+            found.push({ label: 'School Details — ' + sd.count.toLocaleString() + ' schools', kind: 'schools', file: res.file });
+          } else if (kind === 'report') {
+            var tpl = V.parseTemplate(sheet.rows);
+            if (!tpl) return;
+            if (state.sample) { state.sample = false; state.sources = []; }
+            state.template = tpl; state.ssOverride = null;
+            found.push({ label: 'Report template — ' + tpl.columns.length + ' project/state columns', kind: 'report', file: res.file });
+          }
+        });
+      });
+      if (!found.length) { setBanner('Those files were not recognised. Export the Daily Activity tracker and School Details tabs as CSV and try again.', 'warn'); return; }
+      state.sources = state.sources.concat(found);
+      setBanner('');
+      resetRange();
+      render();
+    }).catch(function (err) { setBanner(err.message, 'warn'); });
+  }
+
+  /* ---------- range helpers ---------- */
+  function fileRange() {
+    if (!state.visits || !state.visits.length) return null;
+    var min = state.visits[0].date, max = min;
+    state.visits.forEach(function (v) { if (v.date < min) min = v.date; if (v.date > max) max = v.date; });
+    return { min: min, max: max };
+  }
+  function shift(isoDate, days) {
+    var d = new Date(isoDate + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+  function applyPreset(which) {
+    var r = fileRange();
+    if (!r) return;
+    var from = r.min, to = r.max;
+    if (which === 'satfri') {
+      var day = new Date(r.max + 'T00:00:00Z').getUTCDay(); // 0 Sun … 6 Sat
+      var toFriday = (day - 5 + 7) % 7;                     // most recent Friday on or before the last date
+      to = shift(r.max, -toFriday); from = shift(to, -6);
+    } else if (which === '7') { to = r.max; from = shift(r.max, -6); }
+    else if (which === 'month') { to = r.max; from = r.max.slice(0, 8) + '01'; }
+    $('from').value = from; $('to').value = to;
+  }
+  function resetRange() { $('preset').value = 'satfri'; applyPreset('satfri'); }
+
+  /* ---------- rendering ---------- */
+  function setBanner(msg, kind) {
+    var el = $('banner');
+    if (!msg) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div class="banner' + (kind === 'warn' ? '' : ' sample') + '">' + msg + '</div>';
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+
+  function renderSources() {
+    $('sources').innerHTML = state.sources.map(function (s) {
+      var tag = s.kind === 'sample' ? '<span class="tag warn">sample</span>' : '<span class="tag">' + esc(s.kind) + '</span>';
+      return '<div class="src">' + tag + '<span>' + esc(s.label) + (s.file ? ' <span class="hint">· ' + esc(s.file) + '</span>' : '') + '</span></div>';
+    }).join('') || '';
+  }
+
+  var current = null;
+  function render() {
+    renderSources();
+    if (!state.visits || !state.schools) { setBanner('Load the activity log and School Details to build a report.', 'warn'); return; }
+    var from = $('from').value, to = $('to').value;
+    if (!from || !to || from > to) { setBanner('Pick a start date on or before the end date.', 'warn'); return; }
+
+    var template = state.template || V.DEFAULT_TEMPLATE;
+    if (state.ssOverride && state.ssOverride.length !== template.columns.length) state.ssOverride = null;
+
+    current = V.build({
+      visits: state.visits, schools: state.schools, template: template,
+      from: from, to: to,
+      grandTotalAllColumns: $('gt').value === 'all',
+      totalSS: state.ssOverride || null
+    });
+
+    if (state.sample) setBanner('Showing sample data so you can see the layout. Drop your CSV exports above to build the real report.');
+    else if (!state.template) setBanner('No Report tab was loaded, so the built-in column list and Total SS values are in use. Edit the Total SS row below if they have changed.');
+    else setBanner('');
+
+    renderChips();
+    renderTable();
+    renderDetail();
+  }
+
+  function renderChips() {
+    var s = current.stats;
+    var bits = [
+      ['Days in range', s.days],
+      ['School-days', s.schoolDays],
+      ['Different schools', s.distinctSchools],
+      ['Visit entries', s.visitRows]
+    ];
+    if (s.unknownVisits) bits.push(['Entries with a code not in School Details', s.unknownVisits]);
+    if (state.logInfo && state.logInfo.skippedNoSchool) bits.push(['Log rows with no school', state.logInfo.skippedNoSchool]);
+    $('chips').innerHTML = bits.map(function (b) {
+      return '<span class="chip">' + esc(b[0]) + ' <b>' + b[1].toLocaleString() + '</b></span>';
+    }).join('');
+  }
+
+  function cell(n, extra) {
+    return '<td class="' + (n ? '' : 'zero ') + (extra || '') + '">' + n + '</td>';
+  }
+
+  function renderTable() {
+    var r = current;
+    var ssTotal = r.totalSS.reduce(function (a, b) { return a + (Number(b) || 0); }, 0);
+    var html = '<thead>';
+    html += '<tr class="proj"><th class="lab">Project name</th>' + r.columns.map(function (c) { return '<th>' + esc(c.project) + '</th>'; }).join('') + '<th></th></tr>';
+    html += '<tr><th class="lab">State</th>' + r.columns.map(function (c) { return '<th>' + esc(c.state) + '</th>'; }).join('') + '<th>Grand Total</th></tr>';
+    html += '</thead><tbody>';
+    html += '<tr class="ss"><th class="lab">Total SS <span class="hint">(editable)</span></th>' +
+      r.totalSS.map(function (v, i) { return '<td><input class="ssinput" type="number" min="0" id="ss' + i + '" value="' + (Number(v) || 0) + '" aria-label="Total SS for ' + esc(r.columns[i].state) + ' ' + esc(r.columns[i].project) + '"></td>'; }).join('') +
+      '<td class="gt">' + ssTotal + '</td></tr>';
+    html += '<tr class="avg"><th class="lab">Average %Visits</th>' +
+      r.avg.map(function (v) { return '<td>' + (v == null ? '—' : (v * 100).toFixed(2) + '%') + '</td>'; }).join('') +
+      '<td class="gt">' + (r.avgGrand == null ? '—' : (r.avgGrand * 100).toFixed(2) + '%') + '</td></tr>';
+    r.dates.forEach(function (d, i) {
+      html += '<tr><th class="lab">' + esc(r.dateLabels[i]) + '</th>' +
+        r.grid[i].map(function (n) { return cell(n); }).join('') +
+        cell(r.rowTotal[i], 'gt') + '</tr>';
+    });
+    html += '<tr class="total"><th class="lab">Total for period</th>' +
+      r.colTotal.map(function (n) { return '<td>' + n + '</td>'; }).join('') +
+      '<td>' + r.grandTotal + '</td></tr>';
+    html += '</tbody>';
+    $('table').innerHTML = html;
+    r.columns.forEach(function (_, i) {
+      $('ss' + i).addEventListener('change', function () {
+        var vals = r.totalSS.slice();
+        vals[i] = Number(this.value) || 0;
+        state.ssOverride = vals;
+        render();
+      });
+    });
+  }
+
+  function renderDetail() {
+    var rows = current.detail;
+    $('detailWrap').open = false;
+    var html = '<thead><tr><th class="lab">Date</th><th style="text-align:left">School</th><th style="text-align:left">State</th><th style="text-align:left">Project</th></tr></thead><tbody>';
+    html += rows.map(function (d) {
+      return '<tr><th class="lab">' + esc(V.isoToLabel(d.date)) + '</th><td style="text-align:left">' + esc(d.label) + '</td><td style="text-align:left">' + esc(d.state) + '</td><td style="text-align:left">' + esc(d.project) + '</td></tr>';
+    }).join('') || '<tr><td colspan="4" style="text-align:left" class="hint">No school visits in this range.</td></tr>';
+    $('detail').innerHTML = html + '</tbody>';
+  }
+
+  /* ---------- actions ---------- */
+  function copyText(text, note) {
+    var done = function () { $('copyNote').textContent = note; setTimeout(function () { $('copyNote').textContent = ''; }, 2600); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text, done); });
+    } else fallbackCopy(text, done);
+  }
+  function fallbackCopy(text, done) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { $('copyNote').textContent = 'Copy failed — select the table and copy manually.'; }
+    document.body.removeChild(ta);
+  }
+  function fileStem() {
+    return 'Visit report ' + $('from').value + ' to ' + $('to').value;
+  }
+  function download(blob, name) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+  }
+
+  $('pick').addEventListener('click', function () { $('file').click(); });
+  $('file').addEventListener('change', function () { ingest(this.files); this.value = ''; });
+  var drop = $('drop');
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) ingest(e.dataTransfer.files); });
+
+  $('preset').addEventListener('change', function () { if (this.value !== 'custom') applyPreset(this.value); render(); });
+  ['from', 'to'].forEach(function (id) {
+    $(id).addEventListener('change', function () { $('preset').value = 'custom'; render(); });
+  });
+  $('gt').addEventListener('change', render);
+
+  $('copy').addEventListener('click', function () {
+    if (!current) return;
+    copyText(V.toTSV(current), 'Copied — paste into Excel, Zoho Sheet or an email.');
+  });
+  $('copyDetail').addEventListener('click', function () {
+    if (!current) return;
+    var text = ['Date\tSchool\tState\tProject'].concat(current.detail.map(function (d) {
+      return [V.isoToLabel(d.date), d.label, d.state, d.project].join('\t');
+    })).join('\n');
+    copyText(text, 'School list copied.');
+  });
+  $('csv').addEventListener('click', function () {
+    if (!current) return;
+    var csv = V.toMatrix(current).map(function (row) {
+      return row.map(function (c) { var s = String(c); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(',');
+    }).join('\n');
+    download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), fileStem() + '.csv');
+  });
+  $('xlsx').addEventListener('click', function () {
+    if (!current || typeof XLSX === 'undefined') return;
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(V.toMatrix(current)), 'Report');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(
+      [['Date', 'School', 'State', 'Project']].concat(current.detail.map(function (d) {
+        return [V.isoToLabel(d.date), d.label, d.state, d.project];
+      }))), 'Schools visited');
+    var out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    download(new Blob([out], { type: 'application/octet-stream' }), fileStem() + '.xlsx');
+  });
+
+  /* optional: fetch published CSV links instead of loading files */
+  function remember(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function recall(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  $('urlLog').value = recall('vr.urlLog');
+  $('urlSchools').value = recall('vr.urlSchools');
+  if ($('urlLog').value || $('urlSchools').value) $('urlWrap').open = true;
+
+  $('fetchUrls').addEventListener('click', function () {
+    var a = $('urlLog').value.trim(), b = $('urlSchools').value.trim();
+    if (!a && !b) { setBanner('Paste at least one published CSV link first.', 'warn'); return; }
+    remember('vr.urlLog', a); remember('vr.urlSchools', b);
+    setBanner('Fetching published links…');
+    var jobs = [a, b].filter(Boolean).map(function (u) {
+      return fetch(u, { credentials: 'omit' }).then(function (res) {
+        if (!res.ok) throw new Error('That link returned ' + res.status + '. Check that the tab is published and the link is the CSV one.');
+        return res.text();
+      }).then(function (text) {
+        return new File([text], u.split('/').pop().split('?')[0] + '.csv', { type: 'text/csv' });
+      });
+    });
+    Promise.all(jobs).then(function (files) { ingest(files); }).catch(function (err) {
+      setBanner('Could not read the link: ' + err.message + ' Zoho may also be blocking this page from reading it, in which case use the CSV download above.', 'warn');
+    });
+  });
+
+  if (window.self !== window.top) {
+    $('copyNote').textContent = 'Downloads are blocked in this preview — use Copy table, or open the GitHub Pages copy.';
+  }
+
+  loadSample();
+  resetRange();
+  render();
+})();
+</script>
