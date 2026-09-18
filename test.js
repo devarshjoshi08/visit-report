@@ -113,6 +113,29 @@ eq('first day row label', m[4][1], '05 Sep 2026');
 eq('last row is the period total', m[11][1], 'Total for period');
 eq('TSV has tabs', V.toTSV(rep).split('\n')[4].indexOf('\t') > -1, true);
 
+console.log('mapping gaps');
+const g = V.gaps({ visits: log.visits, schools: sd.schools, template: tpl, from: '2026-09-05', to: '2026-09-11' });
+eq('one unmapped school code found', g.missing.length, 1);
+eq('unmapped code', g.missing[0].code, '999999');
+eq('unmapped name taken from the log text', g.missing[0].label, 'Unknown School');
+eq('unmapped entry count', g.missing[0].entries, 1);
+eq('unmapped seen in range', g.missing[0].inRange, 1);
+eq('gaps look at the whole file, not just the range',
+  V.gaps({ visits: log.visits, schools: sd.schools, template: tpl, from: '2026-10-01', to: '2026-10-07' }).missing[0].inRange, 0);
+
+/* a mapped school whose state/project has no column must be reported, not silently dropped */
+const schoolsPlusCSV = schoolsCSV + '\n6,666666,GHS Example Zeta,Telugu,Telangana,,Warangal,,,,Cognizant,(666666) GHS Example Zeta';
+const logPlusCSV = logCSV + '\nx,,,K,EI11,,,08-Sep-2026,School Visit,09:00 AM,3:00 PM,(666666) GHS Example Zeta';
+const sd2 = V.parseSchools(V.parseCSV(schoolsPlusCSV));
+const log2 = V.parseLog(V.parseCSV(logPlusCSV));
+const g2 = V.gaps({ visits: log2.visits, schools: sd2.schools, template: tpl, from: '2026-09-05', to: '2026-09-11' });
+eq('uncovered state/project pair reported', g2.uncovered.length, 1);
+eq('uncovered pair named', g2.uncovered[0].state + '/' + g2.uncovered[0].project, 'Telangana/Cognizant');
+eq('uncovered school count', g2.uncovered[0].schools, 1);
+eq('uncovered entries in range', g2.uncovered[0].inRange, 1);
+const rep3 = V.build({ visits: log2.visits, schools: sd2.schools, template: tpl, from: '2026-09-05', to: '2026-09-11' });
+eq('uncovered visit is not counted in any column', rep3.colTotal.reduce((a, b) => a + b, 0), 5);
+
 console.log('fallback template');
 const rep2 = V.build({ visits: log.visits, schools: sd.schools, from: '2026-09-05', to: '2026-09-11' });
 eq('built-in template still counts', rep2.colTotal.reduce((a, b) => a + b, 0), 5);

@@ -104,7 +104,7 @@
 
   <section class="card">
     <div class="step"><span class="n">1</span><h2>Load the tracker export</h2></div>
-    <p class="hint">In the Zoho sheet: <b>File &rsaquo; Download as &rsaquo; CSV</b> on the <b>Daily Activity tracker 01 Oct</b> tab, then the same on <b>School Details</b> (and <b>Report</b> if you want its Total SS row). Drop all of them below. A full <code>.xlsx</code> download of the workbook works too, but it is much slower to load.</p>
+    <p class="hint">Two files. In the Zoho sheet, <b>File &rsaquo; Download as &rsaquo; CSV</b> on <b>Daily Activity tracker 01 Oct</b> &mdash; the form's master sheet, which every number below is counted from &mdash; and the same on <b>School Details</b>, used only to map each school to its state and project. School codes are read out of the brackets in <i>School Code and Name</i>, so column B is not needed. A full <code>.xlsx</code> download works too, but it is much slower to load.</p>
     <div class="drop" id="drop">
       <p><b>Drop CSV or Excel files here</b></p>
       <button class="btn" type="button" id="pick">Choose files</button>
@@ -165,9 +165,32 @@
     </details>
   </section>
 
+  <section class="card" id="gapsCard">
+    <div class="step"><span class="n">4</span><h2>Mapping to fix</h2></div>
+    <p class="hint">Visits that the report cannot place, counted across the whole export. Clearing these is what keeps the weekly numbers complete.</p>
+
+    <div>
+      <h3 style="font-size:14px; margin:0 0 6px;" id="missTitle">Schools missing from School Details</h3>
+      <p class="hint" id="missNote"></p>
+      <div class="scroll" style="margin-top:8px; max-height:300px; overflow-y:auto;"><table id="missing"></table></div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn" type="button" id="copyMissing">Copy list</button>
+        <button class="btn" type="button" id="csvMissing">Download CSV</button>
+        <span class="hint" id="missNoteCopy"></span>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--line); padding-top:14px;">
+      <h3 style="font-size:14px; margin:0 0 6px;" id="uncovTitle">Mapped schools with no column in the report</h3>
+      <p class="hint" id="uncovNote"></p>
+      <div class="scroll" style="margin-top:8px;"><table id="uncovered"></table></div>
+    </div>
+  </section>
+
   <footer>
+    <p><b>Everything is counted from the master sheet</b> &mdash; <i>Daily Activity tracker 01 Oct</i>, the tab the form writes into. The school code comes from the brackets in <i>School Code and Name</i>, so the sheet's own helper column is not used. School Details is read only to look up each school's state and project.</p>
     <p><b>How a day is counted:</b> one school counts once per day, however many people logged a visit to it. A school lands in a column when its state matches and the column's project is <i>All</i> or matches that school's <code>po.name</code>. This is the same rule the Report tab uses.</p>
-    <p><b>Average %Visits</b> uses the Report tab's own formula: visits in the period &divide; (Total SS &times; days &times; 6/7). Total SS comes from the Report export, and you can edit the values in the table.</p>
+    <p><b>Average %Visits</b> uses the Report tab's own formula: visits in the period &divide; (Total SS &times; days &times; 6/7). Total SS starts from the values in the Report tab as of 11 Sep 2026; edit any of them in the table and the change is remembered on this device.</p>
     <p>Log rows with no school in brackets (project calls, leave, and so on) are skipped, and so are school codes that are missing from School Details &mdash; both are counted for you above the table.</p>
   </footer>
 </div>
@@ -214,6 +237,7 @@
         visits: state.visits,
         schools: state.schools,
         template: state.template,
+        ssOverride: state.ssOverride,
         skippedNoSchool: state.logInfo ? state.logInfo.skippedNoSchool : 0,
         sources: state.sources.map(function (s) { return { label: s.label, kind: s.kind, file: s.file }; })
       }));
@@ -233,7 +257,7 @@
       state.template = p.template || null;
       state.logInfo = { visits: p.visits, skippedNoDate: 0, skippedNoSchool: p.skippedNoSchool || 0 };
       state.sample = false;
-      state.ssOverride = null;
+      state.ssOverride = p.ssOverride || null;
       state.sources = (p.sources || []).concat([{ kind: 'saved', label: 'Restored from this device — loaded ' + new Date(p.savedAt).toLocaleString() }]);
       $('clear').hidden = false;
       return true;
@@ -362,7 +386,7 @@
     }).join('') || '';
   }
 
-  var current = null;
+  var current = null, currentGaps = { missing: [], uncovered: [] };
   function render() {
     renderSources();
     if (!state.visits || !state.schools) { setBanner('Load the activity log and School Details to build a report.', 'warn'); return; }
@@ -380,12 +404,56 @@
     });
 
     if (state.sample) setBanner('Showing sample data so you can see the layout. Drop your CSV exports above to build the real report.');
-    else if (!state.template) setBanner('No Report tab was loaded, so the built-in column list and Total SS values are in use. Edit the Total SS row below if they have changed.');
+    else if (!state.template) setBanner('Columns and Total SS come from the built-in template. Edit any Total SS value below and it is remembered on this device.');
     else setBanner('');
+
+    currentGaps = V.gaps({ visits: state.visits, schools: state.schools, template: template, from: from, to: to });
 
     renderChips();
     renderTable();
     renderDetail();
+    renderGaps();
+  }
+
+  function renderGaps() {
+    var g = currentGaps;
+    var inRange = g.missing.filter(function (m) { return m.inRange; }).length;
+    $('missTitle').textContent = 'Schools missing from School Details — ' + g.missing.length +
+      (g.missing.length ? ' (' + inRange + ' seen in the selected range)' : '');
+    $('missNote').textContent = g.missing.length
+      ? 'These school codes appear in the master sheet but not in School Details, so their visits are not counted in any column. Add them to School Details with their state and project.'
+      : 'Every school in the master sheet is mapped. Nothing to add.';
+
+    var html = '<thead><tr><th class="lab">School code</th><th style="text-align:left">Name as written in the log</th><th>Entries</th><th>First seen</th><th>Last seen</th><th>In range</th></tr></thead><tbody>';
+    html += g.missing.map(function (m) {
+      return '<tr><th class="lab">' + esc(m.code) + '</th>' +
+        '<td style="text-align:left">' + esc(m.label || '—') + '</td>' +
+        '<td>' + m.entries + '</td>' +
+        '<td>' + esc(V.isoToLabel(m.first)) + '</td>' +
+        '<td>' + esc(V.isoToLabel(m.last)) + '</td>' +
+        '<td class="' + (m.inRange ? '' : 'zero') + '">' + (m.inRange || 0) + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="hint" style="text-align:left">No unmapped schools.</td></tr>';
+    $('missing').innerHTML = html + '</tbody>';
+
+    $('uncovTitle').textContent = 'Mapped schools with no column in the report — ' + g.uncovered.length;
+    $('uncovNote').textContent = g.uncovered.length
+      ? 'These schools are in School Details, but their state and project pair has no column in the report, so their visits land nowhere. Either add a column to the template or fold the project into an “All” column for that state.'
+      : 'Every mapped school falls into one of the report columns.';
+    var uhtml = '<thead><tr><th class="lab">State</th><th style="text-align:left">Project (po.name)</th><th>Schools</th><th>Entries</th><th>First seen</th><th>Last seen</th></tr></thead><tbody>';
+    uhtml += g.uncovered.map(function (u) {
+      return '<tr><th class="lab">' + esc(u.state || '—') + '</th>' +
+        '<td style="text-align:left">' + esc(u.project || '(blank)') + '</td>' +
+        '<td>' + u.schools + '</td><td>' + u.entries + '</td>' +
+        '<td>' + esc(V.isoToLabel(u.first)) + '</td><td>' + esc(V.isoToLabel(u.last)) + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="hint" style="text-align:left">Nothing uncovered.</td></tr>';
+    $('uncovered').innerHTML = uhtml + '</tbody>';
+  }
+
+  function missingTSV() {
+    return ['School code\tName as written in the log\tEntries\tFirst seen\tLast seen\tIn selected range']
+      .concat(currentGaps.missing.map(function (m) {
+        return [m.code, m.label, m.entries, V.isoToLabel(m.first), V.isoToLabel(m.last), m.inRange || 0].join('\t');
+      })).join('\n');
   }
 
   function renderChips() {
@@ -439,6 +507,7 @@
         vals[i] = Number(this.value) || 0;
         state.ssOverride = vals;
         render();
+        if (!state.sample) saveCache();
       });
     });
   }
@@ -506,6 +575,25 @@
     })).join('\n');
     copyText(text, 'School list copied.');
   });
+  $('copyMissing').addEventListener('click', function () {
+    if (!currentGaps.missing.length) { $('missNoteCopy').textContent = 'Nothing to copy — every school is mapped.'; return; }
+    var done = $('missNoteCopy');
+    var text = missingTSV();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        done.textContent = 'Copied — paste into School Details and fill in state and project.';
+        setTimeout(function () { done.textContent = ''; }, 3000);
+      });
+    } else { fallbackCopy(text, function () { done.textContent = 'Copied.'; }); }
+  });
+  $('csvMissing').addEventListener('click', function () {
+    if (!currentGaps.missing.length) return;
+    var csv = missingTSV().split('\n').map(function (line) {
+      return line.split('\t').map(function (c) { return /[",]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(',');
+    }).join('\n');
+    download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), 'Schools to add to School Details.csv');
+  });
+
   $('csv').addEventListener('click', function () {
     if (!current) return;
     var csv = V.toMatrix(current).map(function (row) {
@@ -521,6 +609,20 @@
       [['Date', 'School', 'State', 'Project']].concat(current.detail.map(function (d) {
         return [V.isoToLabel(d.date), d.label, d.state, d.project];
       }))), 'Schools visited');
+    if (currentGaps.missing.length) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(
+        [['School code', 'Name as written in the log', 'Entries', 'First seen', 'Last seen', 'In selected range']]
+          .concat(currentGaps.missing.map(function (m) {
+            return [m.code, m.label, m.entries, V.isoToLabel(m.first), V.isoToLabel(m.last), m.inRange || 0];
+          }))), 'Schools to add');
+    }
+    if (currentGaps.uncovered.length) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(
+        [['State', 'Project (po.name)', 'Schools', 'Entries', 'First seen', 'Last seen']]
+          .concat(currentGaps.uncovered.map(function (u) {
+            return [u.state, u.project, u.schools, u.entries, V.isoToLabel(u.first), V.isoToLabel(u.last)];
+          }))), 'No column');
+    }
     var out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     download(new Blob([out], { type: 'application/octet-stream' }), fileStem() + '.xlsx');
   });

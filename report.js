@@ -137,7 +137,7 @@
       var code = extractCode(row[schoolCol]);
       if (!d) { if (norm(row[schoolCol])) skippedNoDate++; continue; }
       if (!code) { skippedNoSchool++; continue; }
-      visits.push({ date: d, code: code });
+      visits.push({ date: d, code: code, label: norm(row[schoolCol]).replace(/^\(\d+\)\s*/, '') });
     }
     return { visits: visits, skippedNoDate: skippedNoDate, skippedNoSchool: skippedNoSchool };
   }
@@ -296,6 +296,59 @@
     };
   }
 
+  /* ---------- mapping gaps ----------
+     Two ways a visit in the master sheet can fall out of the report:
+     1. its school code is not in School Details at all, so state and project are unknown;
+     2. the school is mapped, but its state/project pair has no column in the template. */
+  function gaps(opts) {
+    var visits = opts.visits || [];
+    var schools = opts.schools || {};
+    var cols = (opts.template || DEFAULT_TEMPLATE).columns;
+    var from = opts.from, to = opts.to;
+    var covered = function (school) {
+      return cols.some(function (col) {
+        return key(col.state) === school.state && (key(col.project) === 'all' || key(col.project) === school.project);
+      });
+    };
+    var missing = {}, uncovered = {};
+
+    visits.forEach(function (v) {
+      var inRange = from && to && v.date >= from && v.date <= to;
+      var school = schools[v.code];
+      if (!school) {
+        var m = missing[v.code] || (missing[v.code] = { code: v.code, label: '', entries: 0, first: v.date, last: v.date, inRange: 0 });
+        m.entries++;
+        if (v.label && v.label.length > m.label.length) m.label = v.label;
+        if (v.date < m.first) m.first = v.date;
+        if (v.date > m.last) m.last = v.date;
+        if (inRange) m.inRange++;
+        return;
+      }
+      if (covered(school)) return;
+      var gkey = school.stateLabel + '|' + school.projectLabel;
+      var u = uncovered[gkey] || (uncovered[gkey] = {
+        state: school.stateLabel, project: school.projectLabel,
+        entries: 0, inRange: 0, codes: {}, first: v.date, last: v.date
+      });
+      u.entries++;
+      u.codes[v.code] = 1;
+      if (v.date < u.first) u.first = v.date;
+      if (v.date > u.last) u.last = v.date;
+      if (inRange) u.inRange++;
+    });
+
+    var byEntries = function (a, b) { return b.entries - a.entries || (a.label || a.state).localeCompare(b.label || b.state); };
+    return {
+      missing: Object.keys(missing).map(function (k) { return missing[k]; }).sort(byEntries),
+      uncovered: Object.keys(uncovered).map(function (k) {
+        var u = uncovered[k];
+        u.schools = Object.keys(u.codes).length;
+        delete u.codes;
+        return u;
+      }).sort(byEntries)
+    };
+  }
+
   /* ---------- output shapes ---------- */
   function toMatrix(report, opts) {
     opts = opts || {};
@@ -325,6 +378,7 @@
     parseSchools: parseSchools,
     parseTemplate: parseTemplate,
     build: build,
+    gaps: gaps,
     toMatrix: toMatrix,
     toTSV: toTSV,
     toISO: toISO,
