@@ -85,6 +85,8 @@
   td.zero{color:var(--muted); opacity:.45;}
   td.gt{font-weight:600;}
   tbody tr:hover td:not(.lab){background:var(--accent-wash);}
+  .is-sample .scroll{opacity:.55; filter:saturate(.35);}
+  .is-sample .scroll table{pointer-events:none;}
   .ssinput{width:56px; font:inherit; font-size:12px; font-variant-numeric:tabular-nums; text-align:right; border:1px solid var(--line); border-radius:5px; padding:2px 5px; background:var(--surface); color:var(--ink);}
 
   details{border-top:1px solid var(--line); padding-top:12px;}
@@ -147,7 +149,7 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" id="reportCard">
     <div class="step"><span class="n">3</span><h2>Take the report</h2></div>
     <div id="banner"></div>
     <div class="chips" id="chips"></div>
@@ -307,13 +309,12 @@
           if (kind === 'log') {
             var log = V.parseLog(sheet.rows);
             if (!log.visits.length) return;
-            if (state.sample) { state.visits = []; state.logInfo = { visits: [], skippedNoDate: 0, skippedNoSchool: 0 }; state.sample = false; state.sources = []; }
-            state.visits = (state.visits || []).concat(log.visits);
-            state.logInfo = {
-              visits: state.visits,
-              skippedNoDate: (state.logInfo ? state.logInfo.skippedNoDate : 0) + log.skippedNoDate,
-              skippedNoSchool: (state.logInfo ? state.logInfo.skippedNoSchool : 0) + log.skippedNoSchool
-            };
+            /* a newly loaded log replaces the old one — otherwise a fresher export
+               would sit on top of stale rows and the counts would be a mix of both */
+            if (state.sample) { state.sample = false; state.sources = []; }
+            state.sources = state.sources.filter(function (s) { return s.kind !== 'log' && s.kind !== 'saved'; });
+            state.visits = log.visits;
+            state.logInfo = log;
             found.push({ label: 'Activity log — ' + log.visits.length.toLocaleString() + ' school visits', kind: 'log', file: res.file });
           } else if (kind === 'schools') {
             var sd = V.parseSchools(sheet.rows);
@@ -403,7 +404,13 @@
       totalSS: state.ssOverride || null
     });
 
-    if (state.sample) setBanner('Showing sample data so you can see the layout. Drop your CSV exports above to build the real report.');
+    /* sample numbers must never be mistaken for the real report, so the export
+       buttons stay off and the table is dimmed until an export is loaded */
+    ['copy', 'xlsx', 'csv', 'copyMissing', 'csvMissing'].forEach(function (id) { $(id).disabled = state.sample; });
+    $('reportCard').classList.toggle('is-sample', state.sample);
+    $('gapsCard').classList.toggle('is-sample', state.sample);
+
+    if (state.sample) setBanner('These are made-up example numbers, not your data — copying and downloading are switched off. Drop your CSV exports above to build the real report.');
     else if (!state.template) setBanner('Columns and Total SS come from the built-in template. Edit any Total SS value below and it is remembered on this device.');
     else setBanner('');
 
@@ -458,6 +465,7 @@
 
   function renderChips() {
     var s = current.stats;
+    var r = fileRange();
     var bits = [
       ['Days in range', s.days],
       ['School-days', s.schoolDays],
@@ -469,9 +477,14 @@
     var t = today();
     var ahead = (state.visits || []).filter(function (v) { return v.date > t; }).length;
     if (ahead) bits.push(['Entries dated after today — likely typos', ahead]);
-    $('chips').innerHTML = bits.map(function (b) {
+    var html = bits.map(function (b) {
       return '<span class="chip">' + esc(b[0]) + ' <b>' + b[1].toLocaleString() + '</b></span>';
     }).join('');
+    if (r) {
+      html = '<span class="chip">' + (state.sample ? 'Sample covers' : 'Loaded data covers') +
+        ' <b>' + esc(V.isoToLabel(r.min)) + ' – ' + esc(V.isoToLabel(r.max)) + '</b></span>' + html;
+    }
+    $('chips').innerHTML = html;
   }
 
   function cell(n, extra) {
@@ -664,8 +677,29 @@
     render();
   });
 
+  /* A schools.csv sitting next to this page (kept up to date from ClickHouse, say)
+     is picked up on its own, so the weekly job is just the tracker export. */
+  function loadRepoMapping() {
+    if (location.protocol === 'file:') return;
+    fetch('schools.csv', { cache: 'no-store' }).then(function (res) {
+      if (!res.ok) return null;
+      return res.text();
+    }).then(function (text) {
+      if (!text) return;
+      var rows = V.parseCSV(text);
+      if (V.classify(rows, 'schools.csv') !== 'schools') return;
+      var sd = V.parseSchools(rows);
+      if (!sd.count) return;
+      state.schools = sd.schools;
+      state.sources = state.sources.filter(function (s) { return s.kind !== 'schools'; })
+        .concat([{ kind: 'mapping', label: 'Mapping from this site — ' + sd.count.toLocaleString() + ' schools, refreshed automatically', file: 'schools.csv' }]);
+      if (!state.sample) { render(); saveCache(); } else { render(); }
+    }).catch(function () { /* no mapping file published — the School Details CSV is used instead */ });
+  }
+
   if (!loadCache()) loadSample();
   resetRange();
   render();
+  loadRepoMapping();
 })();
 </script>
