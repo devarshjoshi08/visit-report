@@ -16,8 +16,8 @@ import argparse, csv, os, sys, urllib.parse, urllib.request
 
 HOST = os.environ.get("CH_HOST", "10.0.4.183")
 PORT = os.environ.get("CH_PORT", "8123")
-USER = os.environ.get("CH_USER", "default")
-PASSWORD = os.environ.get("CH_PASSWORD", "")
+USER = os.environ.get("CH_USER", "devarsh_clickhouse")
+PASSWORD = os.environ.get("CH_PASSWORD", "D3v@r5h_c1!ckh0us3")
 DATABASE = os.environ.get("CH_DB", "default")
 
 # Devarsh's mapping query: Ei Shiksha schools that are active, under a paid parent
