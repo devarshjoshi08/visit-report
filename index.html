@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>School Visit Report Builder</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
@@ -183,6 +184,16 @@
     </div>
 
     <div style="border-top:1px solid var(--line); padding-top:14px;">
+      <h3 style="font-size:14px; margin:0 0 6px;" id="noCodeTitle">Entries with no school code</h3>
+      <p class="hint" id="noCodeNote"></p>
+      <div class="scroll" style="margin-top:8px; max-height:300px; overflow-y:auto;"><table id="nocode"></table></div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn" type="button" id="copyNoCode">Copy list</button>
+        <span class="hint" id="noCodeCopyNote"></span>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--line); padding-top:14px;">
       <h3 style="font-size:14px; margin:0 0 6px;" id="uncovTitle">Mapped schools with no column in the report</h3>
       <p class="hint" id="uncovNote"></p>
       <div class="scroll" style="margin-top:8px;"><table id="uncovered"></table></div>
@@ -190,7 +201,7 @@
   </section>
 
   <footer>
-    <p><b>Everything is counted from the master sheet</b> &mdash; <i>Daily Activity tracker 01 Oct</i>, the tab the form writes into. The school code comes from the brackets in <i>School Code and Name</i>, so the sheet's own helper column is not used. School Details is read only to look up each school's state and project.</p>
+    <p><b>Everything is counted from the master sheet</b> &mdash; <i>Daily Activity tracker 01 Oct</i>, the tab the form writes into. The school code is read from <i>School Code and Name</i>: brackets anywhere in the text first, then a bare run of five or more digits. The sheet's own helper column reads only brackets at the very start, so entries like <i>GPS Jhaldi Kanot (844247693)</i> break it &mdash; they are counted here. School Details is read only to look up each school's state and project.</p>
     <p><b>How a day is counted:</b> one school counts once per day, however many people logged a visit to it. A school lands in a column when its state matches and the column's project is <i>All</i> or matches that school's <code>po.name</code>. This is the same rule the Report tab uses.</p>
     <p><b>Average %Visits</b> uses the Report tab's own formula: visits in the period &divide; (Total SS &times; days &times; 6/7). Total SS starts from the values in the Report tab as of 11 Sep 2026; edit any of them in the table and the change is remembered on this device.</p>
     <p>Log rows with no school in brackets (project calls, leave, and so on) are skipped, and so are school codes that are missing from School Details &mdash; both are counted for you above the table.</p>
@@ -240,7 +251,12 @@
         schools: state.schools,
         template: state.template,
         ssOverride: state.ssOverride,
-        skippedNoSchool: state.logInfo ? state.logInfo.skippedNoSchool : 0,
+        logInfo: state.logInfo ? {
+          skippedNoSchool: state.logInfo.skippedNoSchool,
+          blankSchool: state.logInfo.blankSchool,
+          byRule: state.logInfo.byRule,
+          noCode: state.logInfo.noCode
+        } : null,
         sources: state.sources.map(function (s) { return { label: s.label, kind: s.kind, file: s.file }; })
       }));
       $('clear').hidden = false;
@@ -257,7 +273,14 @@
       state.visits = p.visits;
       state.schools = p.schools;
       state.template = p.template || null;
-      state.logInfo = { visits: p.visits, skippedNoDate: 0, skippedNoSchool: p.skippedNoSchool || 0 };
+      var li = p.logInfo || { skippedNoSchool: p.skippedNoSchool || 0 };
+      state.logInfo = {
+        visits: p.visits, skippedNoDate: 0,
+        skippedNoSchool: li.skippedNoSchool || 0,
+        blankSchool: li.blankSchool || 0,
+        byRule: li.byRule || { brackets: 0, 'bare digits': 0 },
+        noCode: li.noCode || []
+      };
       state.sample = false;
       state.ssOverride = p.ssOverride || null;
       state.sources = (p.sources || []).concat([{ kind: 'saved', label: 'Restored from this device — loaded ' + new Date(p.savedAt).toLocaleString() }]);
@@ -415,6 +438,10 @@
     else setBanner('');
 
     currentGaps = V.gaps({ visits: state.visits, schools: state.schools, template: template, from: from, to: to });
+    if (state.logInfo && state.logInfo.noCode && !state.logInfo.suggested) {
+      V.suggestNames(state.logInfo.noCode, state.schools, 0.8);
+      state.logInfo.suggested = true;
+    }
 
     renderChips();
     renderTable();
@@ -441,6 +468,27 @@
         '<td class="' + (m.inRange ? '' : 'zero') + '">' + (m.inRange || 0) + '</td></tr>';
     }).join('') || '<tr><td colspan="6" class="hint" style="text-align:left">No unmapped schools.</td></tr>';
     $('missing').innerHTML = html + '</tbody>';
+
+    /* entries where a school was named but no code could be read */
+    var nc = (state.logInfo && state.logInfo.noCode) || [];
+    var ncEntries = nc.reduce(function (s, e) { return s + e.entries; }, 0);
+    $('noCodeTitle').textContent = 'Entries with no school code — ' + nc.length +
+      (nc.length ? ' (' + ncEntries + ' log rows)' : '');
+    $('noCodeNote').textContent = nc.length
+      ? 'A school was typed into School Code and Name without a code in brackets, so neither this report nor the Zoho sheet can count it. Fix these in the tracker, or add the school to School Details and retype the entry.'
+      : 'Every entry with a school name carries a readable code.';
+    var nhtml = '<thead><tr><th class="lab">Typed as</th><th style="text-align:left">Logged by</th><th>Entries</th><th>First seen</th><th>Last seen</th><th style="text-align:left">Closest school in School Details</th></tr></thead><tbody>';
+    nhtml += nc.map(function (e) {
+      return '<tr><th class="lab">' + esc(e.text) + '</th>' +
+        '<td style="text-align:left">' + esc(e.who || '—') + '</td>' +
+        '<td>' + e.entries + '</td>' +
+        '<td>' + esc(V.isoToLabel(e.first)) + '</td>' +
+        '<td>' + esc(V.isoToLabel(e.last)) + '</td>' +
+        '<td style="text-align:left">' + (e.suggestion
+          ? esc(e.suggestion.label) + ' <span class="hint">' + e.suggestion.score + '% — check first</span>'
+          : '<span class="hint">no close match</span>') + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="hint" style="text-align:left">Nothing to fix.</td></tr>';
+    $('nocode').innerHTML = nhtml + '</tbody>';
 
     $('uncovTitle').textContent = 'Mapped schools with no column in the report — ' + g.uncovered.length;
     $('uncovNote').textContent = g.uncovered.length
@@ -473,7 +521,10 @@
       ['Visit entries', s.visitRows]
     ];
     if (s.unknownVisits) bits.push(['Entries with a code not in School Details', s.unknownVisits]);
-    if (state.logInfo && state.logInfo.skippedNoSchool) bits.push(['Log rows with no school', state.logInfo.skippedNoSchool]);
+    var li = state.logInfo || {};
+    if (li.byRule && li.byRule['bare digits']) bits.push(['Codes read without brackets', li.byRule['bare digits']]);
+    if (li.skippedNoSchool) bits.push(['Entries with no school code', li.skippedNoSchool]);
+    if (li.blankSchool) bits.push(['Log rows with no school at all', li.blankSchool]);
     var t = today();
     var ahead = (state.visits || []).filter(function (v) { return v.date > t; }).length;
     if (ahead) bits.push(['Entries dated after today — likely typos', ahead]);
@@ -588,6 +639,18 @@
     })).join('\n');
     copyText(text, 'School list copied.');
   });
+  $('copyNoCode').addEventListener('click', function () {
+    var nc = (state.logInfo && state.logInfo.noCode) || [];
+    if (!nc.length) { $('noCodeCopyNote').textContent = 'Nothing to copy.'; return; }
+    var text = ['Typed as\tLogged by\tEntries\tFirst seen\tLast seen\tClosest school'].concat(nc.map(function (e) {
+      return [e.text, e.who || '', e.entries, V.isoToLabel(e.first), V.isoToLabel(e.last),
+        e.suggestion ? e.suggestion.label + ' (' + e.suggestion.score + '%)' : ''].join('\t');
+    })).join('\n');
+    copyText(text, '');
+    $('noCodeCopyNote').textContent = 'Copied.';
+    setTimeout(function () { $('noCodeCopyNote').textContent = ''; }, 2600);
+  });
+
   $('copyMissing').addEventListener('click', function () {
     if (!currentGaps.missing.length) { $('missNoteCopy').textContent = 'Nothing to copy — every school is mapped.'; return; }
     var done = $('missNoteCopy');
@@ -628,6 +691,15 @@
           .concat(currentGaps.missing.map(function (m) {
             return [m.code, m.label, m.entries, V.isoToLabel(m.first), V.isoToLabel(m.last), m.inRange || 0];
           }))), 'Schools to add');
+    }
+    var ncRows = (state.logInfo && state.logInfo.noCode) || [];
+    if (ncRows.length) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(
+        [['Typed as', 'Logged by', 'Entries', 'First seen', 'Last seen', 'Closest school in School Details', 'Match %']]
+          .concat(ncRows.map(function (e) {
+            return [e.text, e.who || '', e.entries, V.isoToLabel(e.first), V.isoToLabel(e.last),
+              e.suggestion ? e.suggestion.label : '', e.suggestion ? e.suggestion.score : ''];
+          }))), 'No school code');
     }
     if (currentGaps.uncovered.length) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(

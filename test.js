@@ -72,7 +72,9 @@ const tpl = V.parseTemplate(V.parseCSV(reportCSV));
 
 console.log('parsing');
 eq('visits parsed', log.visits.length, 9);
-eq('rows without a school skipped', log.skippedNoSchool, 1);
+eq('log rows with no school at all', log.blankSchool, 1);
+eq('no entries are missing a code in this fixture', log.skippedNoSchool, 0);
+eq('all codes read from brackets', log.byRule.brackets, 9);
 eq('schools parsed', sd.count, 5);
 eq('template columns', tpl.columns.length, 15);
 eq('template Total SS for Prevail HP', tpl.columns[4].totalSS, 42);
@@ -112,6 +114,37 @@ eq('header states row', m[1][2], 'Andhra Pradesh');
 eq('first day row label', m[4][1], '05 Sep 2026');
 eq('last row is the period total', m[11][1], 'Total for period');
 eq('TSV has tabs', V.toTSV(rep).split('\n')[4].indexOf('\t') > -1, true);
+
+console.log('reading the school code out of column L');
+eq('brackets at the start', V.extractCode('(122878) G.Sr.Sec.S.Varda').code, '122878');
+eq('brackets at the end — the sheet formula fails on these',
+  V.extractCode('GPS Jhaldi Kanot (844247693)').code, '844247693');
+eq('brackets with no space', V.extractCode('Gps Denwari(516114340)').code, '516114340');
+eq('bare digits in the text', V.extractCode('Gps bhargaon  844247679').code, '844247679');
+eq('bare digits rule is labelled', V.extractCode('331068623.0').how, 'bare digits');
+eq('a name with no code at all', V.extractCode('Gps Sharai Shuhawal'), null);
+eq('a bracketed name is not mistaken for a code', V.extractCode('GPS (New Block) Sundar (171904)').code, '171904');
+
+/* entries typed without a code are collected, not silently dropped */
+const messyCSV = logCSV + [
+  '',
+  'x,,,Nitin Sharma,EI20,,,09-Sep-2026,School Visit,09:00 AM,3:00 PM,GPS Alpha',
+  'x,,,Nitin Sharma,EI20,,,10-Sep-2026,School Visit,09:00 AM,3:00 PM,GPS Alpha',
+  'x,,,Jyoti,EI21,,,08-Sep-2026,School Visit,09:00 AM,3:00 PM,GPS Beta 222222'
+].join('\n');
+const messy = V.parseLog(V.parseCSV(messyCSV));
+eq('bare-digit entry is counted as a visit', messy.byRule['bare digits'], 1);
+eq('two distinct texts could not be read', messy.noCode.length, 1);
+eq('repeat entries of the same text are grouped', messy.noCode[0].entries, 2);
+eq('who typed it is kept', messy.noCode[0].who, 'Nitin Sharma');
+eq('first and last seen', messy.noCode[0].first + '..' + messy.noCode[0].last, '2026-09-09..2026-09-10');
+
+const suggested = V.suggestNames(messy.noCode.slice(), sd.schools, 0.82);
+eq('the school typed without a code is suggested', suggested[0].suggestion.code, '111111');
+eq('a suggestion carries its score', suggested[0].suggestion.score, 100);
+eq('an unrelated text gets no suggestion',
+  V.suggestNames([{ text: 'Some unrelated place', entries: 1, first: '2026-09-09', last: '2026-09-09' }], sd.schools, 0.82)[0].suggestion,
+  undefined);
 
 console.log('mapping gaps');
 const g = V.gaps({ visits: log.visits, schools: sd.schools, template: tpl, from: '2026-09-05', to: '2026-09-11' });

@@ -11,12 +11,14 @@ Everything runs in the browser. No server, no Zoho login, no data leaves the dev
 | `index.html` | The page: file loading, date range, table, copy/download buttons |
 | `report.js` | The counting logic, kept separate so it can be tested |
 | `test.js` | `node test.js` — checks the logic against a synthetic tracker layout |
-| `tools/fetch_mapping.py` | builds `schools.csv` from ClickHouse, so the mapping refreshes itself |
+| `tools/fetch_mapping.py` | builds `schools.csv` from ClickHouse (run it inside the network) |
+| `tools/update_mapping.sh` | fetch + commit + push the mapping; put this on a cron |
+| `tools/.env.example` | copy to `tools/.env` and fill in — `.env` is git-ignored |
 | `schools.csv` *(optional)* | if present next to `index.html`, the page loads it as the mapping on open |
 
 ## Put it online (GitHub Pages)
 
-1. Create a new **public** repository, e.g. `visit-report`.
+1. Create a repository, e.g. `visit-report`. Public is simplest (GitHub Pages on a private repo needs a paid plan), but see *Before you publish a mapping* below before putting school data in a public one.
 2. Upload `index.html` and `report.js` to the root of the `main` branch (`test.js` is optional).
 3. **Settings → Pages → Build and deployment**: Source = *Deploy from a branch*, Branch = `main`, folder = `/ (root)`. Save.
 4. After a minute the link appears at the top of that Pages screen: `https://<your-user>.github.io/visit-report/`. Share that link — anyone who opens it gets the tool, and their files stay on their own machine.
@@ -39,14 +41,18 @@ Sheets are recognised by shape, not by file name, so you can drop every tab at o
 
 If a file called `schools.csv` sits next to `index.html` in the repo, the page fetches it on open and uses it as the school → state/project mapping. The weekly job is then just the tracker export; School Details no longer has to be downloaded at all, and dropping one in still overrides the published mapping for that session.
 
-`tools/fetch_mapping.py` generates that file from ClickHouse:
+**Where this runs matters.** ClickHouse sits on `10.0.4.183`, a private address. GitHub Pages only serves static files — nothing on GitHub executes this script, and GitHub's runners are on the public internet and cannot reach that address either. So the script runs on a machine inside the network (your laptop on VPN, or an internal server) and only the generated `schools.csv` is pushed.
+
+**Credentials never go in the repo.** They are read from `tools/.env`, which `.gitignore` keeps out of git:
 
 ```bash
-export CH_HOST=10.0.4.183 CH_USER=<read-only user> CH_PASSWORD=...
-python3 tools/fetch_mapping.py --describe              # confirm the column names first
-python3 tools/fetch_mapping.py --out schools.csv       # write the mapping
+cp tools/.env.example tools/.env          # then fill in a read-only user
+python3 tools/fetch_mapping.py --out schools.csv
 python3 tools/fetch_mapping.py --check schools.csv School_Details.csv   # compare with the sheet
+bash tools/update_mapping.sh              # fetch + commit + push in one go
 ```
+
+`tools/update_mapping.sh` is the one to put on a weekly cron on that machine; the header shows the crontab line.
 
 The query it runs is yours, with a de-duplication wrapper because `schools` is a `ReplacingMergeTree` and the same school can appear more than once until its parts merge:
 
@@ -66,9 +72,13 @@ LIMIT 1 BY schoolCode
 
 **Run `--check` once before trusting it.** The report puts a school in a column by matching its project name, so if the warehouse spells a project differently from the report columns (`Prevail Fund Mindspark` vs `Prevail`, say), those schools land in *"no column"* instead. `--check` compares the generated mapping with a School Details export and prints how many schools are missing on either side and how many have a different state or project. Fix any name differences with `--alias fixes.csv`, a two-column `from,to` file.
 
-Commit the generated `schools.csv` on a schedule (cron, or a GitHub Action on a weekly trigger) and the page is always current.
+A GitHub Action cannot do this job — its runners sit on the public internet and cannot see `10.0.4.183`. A cron entry on an internal machine can.
 
-ClickHouse lives on an internal address, so the browser cannot query it directly from GitHub Pages — generating the CSV on a machine that can reach it, and publishing that, is what makes this work without putting database credentials in a public page.
+### Before you publish a mapping
+
+`schools.csv` holds every school's name, district, state and project. In a **public** repo that list is public too. If that is not acceptable, either keep dropping the School Details CSV by hand, make the repo private (GitHub Pages on a private repo needs a paid plan), host the page and the mapping on an internal server, or put `schools.csv` behind an internal URL and paste that link into *"Or pull from published links"*.
+
+**Never commit database credentials.** Anything pushed to a public repo should be treated as leaked the moment it lands — bots scrape new public commits within minutes — and removing the line later does not help, because the value stays in the git history. If it happens: rotate the password first, then delete and recreate the repository (or rewrite history).
 
 ### No download at all (optional)
 
@@ -76,7 +86,16 @@ If the sheet owner publishes those two tabs in Zoho (**File → Publish**) and g
 
 ## How the numbers are produced
 
-Everything is counted from the **master sheet** (*Daily Activity tracker 01 Oct*). The school code is read out of the brackets in *School Code and Name*, so the sheet's own helper column (B) is not used and its `#VALUE!` rows do not matter. **School Details** is read only to map each school to its state and project; the Report tab is not needed at all.
+Everything is counted from the **master sheet** (*Daily Activity tracker 01 Oct*). The school code is read from *School Code and Name* in two steps: **brackets anywhere in the text**, then **a bare run of five or more digits**. The sheet's own helper column (B) is not used.
+
+That matters, because the sheet's formula — `NUMBERVALUE(MID(L,2,FIND(")")-2))` — only works when the text *starts* with the code in brackets. In the 18 Sep 2026 export, out of 10,290 entries that name a school:
+
+| How the entry is typed | Rows | Sheet column B | This tool |
+|---|---:|---|---|
+| `(844247693) GPS Jhaldi Kanot` | 10,240 | reads it | reads it |
+| `GPS Jhaldi Kanot (844247693)`, `Gps Denwari(516114340)` | 9 | `#VALUE!` — visit lost | reads it |
+| `Gps bhargaon  844247679`, `331068623.0` | 6 | `#VALUE!` — visit lost | reads it |
+| `Gps Sharai Shuhawal` (no code at all) | 35 | `#VALUE!` — visit lost | listed for fixing | **School Details** is read only to map each school to its state and project; the Report tab is not needed at all.
 
 - **One school counts once per day**, however many people logged a visit to it. Same rule as the Report tab's `COUNTIFS(... > 0)`.
 - A school lands in a column when its **state** matches and the column's **project** is either `All` or the school's own `po.name` (from School Details).
@@ -95,6 +114,7 @@ Checked against the live workbook: for 5–11 Sep 2026 the page produces 19 / 0 
 The page also lists the visits it cannot place, across the whole export — this is the part that used to be done by eye:
 
 - **Schools missing from School Details** — school codes that appear in the master sheet but have no mapping row, with the name as typed in the log, how many entries, and when they were first and last seen. Copy the list or download it as CSV, add those rows to School Details, and the visits start counting. In the current export there are 12 such codes (19 entries).
+- **Entries with no school code** — a school was typed into *School Code and Name* without any code, so nobody can count it. The list groups them by what was typed, with who logged it, how many entries, the dates, and the closest school name in School Details as a suggestion to check (never counted automatically). The current export has 19 such texts over 35 rows; `Gps Sharai Shuhawal` alone accounts for 12.
 - **Mapped schools with no column in the report** — schools that *are* mapped, but whose state/project pair has no column, so their visits land nowhere. The current export has two: Telangana / Cognizant (14 schools, 46 entries) and Punjab / Govt Led P&G (1 school, 7 entries). The Zoho Report tab has the same blind spot, since it uses the same columns.
 
 Both lists are also added as extra sheets to the Excel download.

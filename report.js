@@ -120,26 +120,64 @@
   }
 
   /* ---------- parsing ---------- */
+  /* The school code lives inside "School Code and Name". The sheet's own helper column
+     reads it with MID(L,2,FIND(")")-2), which only works when the text STARTS with the
+     code in brackets — "Gps Denwari(516114340)" or "GPS Jhaldi Kanot (844247693)" give
+     it #VALUE! and those visits vanish from the Zoho report. We read the brackets
+     wherever they sit, and fall back to a bare run of digits ("Gps bhargaon 844247679",
+     "331068623.0"), which the sheet also drops. */
   function extractCode(value) {
-    var m = String(value == null ? '' : value).match(/\((\d+)\)/);
-    return m ? m[1] : null;
+    var s = String(value == null ? '' : value);
+    var m = s.match(/\((\d+)\)/);
+    if (m) return { code: m[1], how: 'brackets' };
+    m = s.match(/(^|[^0-9])(\d{5,})(\.0)?([^0-9]|$)/);
+    if (m) return { code: m[2], how: 'bare digits' };
+    return null;
   }
 
   function parseLog(rows) {
     var dateCol = headerIndex(rows, ['date']);
     var schoolCol = headerIndex(rows, ['school code and name']);
+    var whoCol = headerIndex(rows, ['name']);
     if (dateCol < 0) dateCol = 7;      // column H in the tracker
     if (schoolCol < 0) schoolCol = 11; // column L
-    var visits = [], skippedNoDate = 0, skippedNoSchool = 0;
+    var visits = [], skippedNoDate = 0, blankSchool = 0;
+    var byRule = { brackets: 0, 'bare digits': 0 };
+    var noCode = {};
+
     for (var r = 1; r < rows.length; r++) {
       var row = rows[r] || [];
+      var text = norm(row[schoolCol]);
       var d = toISO(row[dateCol]);
-      var code = extractCode(row[schoolCol]);
-      if (!d) { if (norm(row[schoolCol])) skippedNoDate++; continue; }
-      if (!code) { skippedNoSchool++; continue; }
-      visits.push({ date: d, code: code, label: norm(row[schoolCol]).replace(/^\(\d+\)\s*/, '') });
+      if (!d) { if (text) skippedNoDate++; continue; }
+      if (!text) { blankSchool++; continue; }      // project calls, leave, and so on
+
+      var hit = extractCode(text);
+      if (!hit) {
+        /* a school was named but no code can be read — these are typing slips at the
+           source, and both this tool and the sheet would otherwise drop them silently */
+        var k = key(text);
+        var e = noCode[k] || (noCode[k] = { text: text, entries: 0, first: d, last: d, who: norm(row[whoCol]) });
+        e.entries++;
+        if (d < e.first) e.first = d;
+        if (d > e.last) e.last = d;
+        continue;
+      }
+      byRule[hit.how]++;
+      visits.push({ date: d, code: hit.code, label: text.replace(/^\(\d+\)\s*/, ''), how: hit.how });
     }
-    return { visits: visits, skippedNoDate: skippedNoDate, skippedNoSchool: skippedNoSchool };
+
+    var noCodeList = Object.keys(noCode).map(function (k) { return noCode[k]; })
+      .sort(function (a, b) { return b.entries - a.entries || a.text.localeCompare(b.text); });
+
+    return {
+      visits: visits,
+      skippedNoDate: skippedNoDate,
+      blankSchool: blankSchool,
+      skippedNoSchool: noCodeList.reduce(function (s, e) { return s + e.entries; }, 0),
+      byRule: byRule,
+      noCode: noCodeList
+    };
   }
 
   function parseSchools(rows) {
@@ -153,12 +191,16 @@
       var row = rows[r] || [];
       var code = null;
       if (codeCol >= 0 && norm(row[codeCol]) && /^\d+$/.test(norm(row[codeCol]))) code = norm(row[codeCol]);
-      if (!code && labelCol >= 0) code = extractCode(row[labelCol]);
+      if (!code && labelCol >= 0) {
+        var hit = extractCode(row[labelCol]);
+        code = hit ? hit.code : null;
+      }
       if (!code) continue;
       if (map[code]) continue;
       map[code] = {
         state: key(stateCol >= 0 ? row[stateCol] : ''),
         project: key(projCol >= 0 ? row[projCol] : ''),
+        name: norm(nameCol >= 0 ? row[nameCol] : ''),
         label: norm(labelCol >= 0 ? row[labelCol] : (nameCol >= 0 ? row[nameCol] : code)) || code,
         stateLabel: norm(stateCol >= 0 ? row[stateCol] : ''),
         projectLabel: norm(projCol >= 0 ? row[projCol] : '')
@@ -296,6 +338,40 @@
     };
   }
 
+  /* ---------- name suggestions ----------
+     For an entry typed without a code, offer the closest school name from School Details
+     as a suggestion only — never as a count. Dice coefficient over letter pairs. */
+  function bigrams(s) {
+    var t = key(s).replace(/[^a-z0-9]/g, ''), out = [];
+    for (var i = 0; i < t.length - 1; i++) out.push(t.slice(i, i + 2));
+    return out;
+  }
+  function similarity(a, b) {
+    var x = bigrams(a), y = bigrams(b);
+    if (!x.length || !y.length) return 0;
+    var counts = {}, hits = 0;
+    x.forEach(function (g) { counts[g] = (counts[g] || 0) + 1; });
+    y.forEach(function (g) { if (counts[g] > 0) { counts[g]--; hits++; } });
+    return (2 * hits) / (x.length + y.length);
+  }
+  function suggestNames(entries, schools, minScore) {
+    minScore = minScore || 0.9;
+    var list = Object.keys(schools).map(function (c) {
+      return { code: c, name: schools[c].name || schools[c].label, label: schools[c].label };
+    });
+    entries.forEach(function (e) {
+      var best = null;
+      for (var i = 0; i < list.length; i++) {
+        var score = similarity(e.text, list[i].name);
+        if (!best || score > best.score) best = { score: score, school: list[i] };
+      }
+      if (best && best.score >= minScore) {
+        e.suggestion = { code: best.school.code, label: best.school.label, score: Math.round(best.score * 100) };
+      }
+    });
+    return entries;
+  }
+
   /* ---------- mapping gaps ----------
      Two ways a visit in the master sheet can fall out of the report:
      1. its school code is not in School Details at all, so state and project are unknown;
@@ -379,6 +455,9 @@
     parseTemplate: parseTemplate,
     build: build,
     gaps: gaps,
+    suggestNames: suggestNames,
+    similarity: similarity,
+    extractCode: extractCode,
     toMatrix: toMatrix,
     toTSV: toTSV,
     toISO: toISO,

@@ -14,11 +14,42 @@ Read-only: it only runs SELECT/DESCRIBE.
 
 import argparse, csv, os, sys, urllib.parse, urllib.request
 
+# Credentials are read from the environment or from a .env file sitting next to this
+# script — never written in here. This file is committed; .env is not (see .gitignore).
+def load_env():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+
+
+load_env()
 HOST = os.environ.get("CH_HOST", "10.0.4.183")
 PORT = os.environ.get("CH_PORT", "8123")
-USER = os.environ.get("CH_USER", "devarsh_clickhouse")
-PASSWORD = os.environ.get("CH_PASSWORD", "D3v@r5h_c1!ckh0us3")
+USER = os.environ.get("CH_USER", "")
+PASSWORD = os.environ.get("CH_PASSWORD", "")
 DATABASE = os.environ.get("CH_DB", "default")
+
+
+def need_credentials():
+    if USER:
+        return
+    sys.exit(
+        "No ClickHouse credentials found.\n"
+        "Create tools/.env (it is git-ignored) with:\n"
+        "    CH_HOST=10.0.4.183\n"
+        "    CH_USER=your_read_only_user\n"
+        "    CH_PASSWORD=your_password\n"
+        "or export the same variables in your shell.\n"
+        "Never put them in this file — it is committed to the repository."
+    )
+
 
 # Devarsh's mapping query: Ei Shiksha schools that are active, under a paid parent
 # organisation. `po.name` in School Details is the parent organisation's name.
@@ -156,7 +187,9 @@ if __name__ == "__main__":
     if args.check:
         check(*args.check)
     elif args.describe:
+        need_credentials()
         describe()
     else:
+        need_credentials()
         sql = open(args.sql, encoding="utf-8").read() if args.sql else DEFAULT_SQL
         write_csv(parse_tsv(run(sql)), args.out, load_aliases(args.alias))
