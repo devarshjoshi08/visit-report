@@ -110,7 +110,8 @@
     if (has('emp no') || name.indexOf('ss details') === 0) return null;
 
     if (has('school code and name') && (has('date') || has('added time'))) return 'log';
-    if (has('schoolcode') && has('po.name')) return 'schools';
+    if ((has('schoolcode') || has('school code')) &&
+        (has('po.name') || has('project') || has('project name'))) return 'schools';
     if ((row2.indexOf('state') !== -1 && row2.indexOf('grand total') !== -1) || row3.indexOf('total ss') !== -1) return 'report';
 
     if (name.indexOf('daily activity') === 0) return 'log';
@@ -180,30 +181,79 @@
     };
   }
 
-  function parseSchools(rows) {
+  /* The warehouse spells projects differently from the report's column headings:
+     there is no 'P&G', only 'Home base P&G Shiksha', 'Govt Led P&G' and so on.
+     An alias rolls every such value into one report column. The raw name is kept
+     for display, so the school list still shows what the mapping actually said. */
+  var DEFAULT_ALIASES = [{ contains: 'p&g', as: 'P&G' }];
+
+  function projectMatchKey(label, aliases) {
+    var k = key(label);
+    if (!k) return k;
+    for (var i = 0; i < aliases.length; i++) {
+      if (k.indexOf(key(aliases[i].contains)) !== -1) return key(aliases[i].as);
+    }
+    return k;
+  }
+
+  /* Excel hands back 121240.0 for an integer cell, and the warehouse suffixes the
+     code of a removed school: 262704Deleted. Both are the same school. */
+  function cleanCode(value) {
+    var s = String(value == null ? '' : value).trim().replace(/\.0$/, '');
+    if (/^\d+$/.test(s)) return { code: s, deleted: false };
+    var m = s.match(/^(\d{3,})[\s._-]*([A-Za-z][A-Za-z ._-]*)$/);
+    if (m) return { code: m[1], deleted: /delet|remov|inactiv/i.test(m[2]) };
+    return null;
+  }
+
+  /* Status is free text in the master list: Active / Deactivated / Upcoming, or a true/false
+     isActive flag. Normalise what we can and pass anything else through as written. */
+  function statusLabel(value) {
+    var raw = norm(value);
+    if (!raw) return '';
+    var k = key(raw);
+    if (k === 'true' || k === '1' || k === 'y' || k === 'yes' || k === 'active') return 'Active';
+    if (k === 'false' || k === '0' || k === 'n' || k === 'no' || k === 'inactive' ||
+        k === 'deactive' || k === 'deactivated' || k === 'dropped' || k === 'closed') return 'Deactivated';
+    if (k === 'upcoming' || k === 'new' || k === 'onboarding' || k === 'pipeline') return 'Upcoming';
+    return raw;
+  }
+
+  function parseSchools(rows, opts) {
+    opts = opts || {};
+    var aliases = opts.aliases || DEFAULT_ALIASES;
     var codeCol = headerIndex(rows, ['schoolcode', 'school code']);
     var stateCol = headerIndex(rows, ['state']);
     var projCol = headerIndex(rows, ['po.name', 'project', 'project name']);
     var labelCol = headerIndex(rows, ['school code and name']);
-    var nameCol = headerIndex(rows, ['name', 'school name']);
+    var nameCol = headerIndex(rows, ['name', 'school name', 'schoolname', 'school_name']);
+    /* Optional. The master list covers active, deactivated and upcoming schools, so status is
+       carried through for context only — a visit is always counted, whatever the status says. */
+    var statusCol = headerIndex(rows, ['status', 'school status', 'isactive', 'is active', 'active']);
     var map = {}, count = 0;
     for (var r = 1; r < rows.length; r++) {
       var row = rows[r] || [];
-      var code = null;
-      if (codeCol >= 0 && norm(row[codeCol]) && /^\d+$/.test(norm(row[codeCol]))) code = norm(row[codeCol]);
+      var code = null, deleted = false;
+      if (codeCol >= 0) {
+        var cc = cleanCode(row[codeCol]);
+        if (cc) { code = cc.code; deleted = cc.deleted; }
+      }
       if (!code && labelCol >= 0) {
         var hit = extractCode(row[labelCol]);
         code = hit ? hit.code : null;
       }
       if (!code) continue;
       if (map[code]) continue;
+      var rawProject = norm(projCol >= 0 ? row[projCol] : '');
       map[code] = {
         state: key(stateCol >= 0 ? row[stateCol] : ''),
-        project: key(projCol >= 0 ? row[projCol] : ''),
+        project: projectMatchKey(rawProject, aliases),
+        projectRaw: key(rawProject),
         name: norm(nameCol >= 0 ? row[nameCol] : ''),
         label: norm(labelCol >= 0 ? row[labelCol] : (nameCol >= 0 ? row[nameCol] : code)) || code,
         stateLabel: norm(stateCol >= 0 ? row[stateCol] : ''),
-        projectLabel: norm(projCol >= 0 ? row[projCol] : '')
+        projectLabel: norm(projCol >= 0 ? row[projCol] : ''),
+        status: statusLabel(statusCol >= 0 ? row[statusCol] : '') || (deleted ? 'Deactivated' : '')
       };
       count++;
     }
@@ -286,7 +336,7 @@
       if (seen[k]) return;
       seen[k] = true;
       schoolDays++;
-      detail.push({ date: v.date, code: v.code, label: school.label, state: school.stateLabel, project: school.projectLabel });
+      detail.push({ date: v.date, code: v.code, label: school.label, state: school.stateLabel, project: school.projectLabel, status: school.status || '', rolledUp: !!(school.projectRaw && school.projectRaw !== school.project) });
       cols.forEach(function (col, ci) {
         if (key(col.state) !== school.state) return;
         if (key(col.project) !== 'all' && key(col.project) !== school.project) return;
@@ -333,6 +383,10 @@
         distinctSchools: Object.keys(detail.reduce(function (m, d) { m[d.code] = 1; return m; }, {})).length,
         unknownCodes: Object.keys(unknown).length,
         unknownVisits: Object.keys(unknown).reduce(function (s, k2) { return s + unknown[k2]; }, 0),
+        notActiveSchoolDays: detail.reduce(function (s, d) {
+          return s + (d.status && key(d.status) !== 'active' ? 1 : 0);
+        }, 0),
+        rolledUpSchoolDays: detail.reduce(function (s, d) { return s + (d.rolledUp ? 1 : 0); }, 0),
         grandTotalSkips: skips
       }
     };
@@ -452,6 +506,10 @@
     classify: classify,
     parseLog: parseLog,
     parseSchools: parseSchools,
+    statusLabel: statusLabel,
+    cleanCode: cleanCode,
+    projectMatchKey: projectMatchKey,
+    DEFAULT_ALIASES: DEFAULT_ALIASES,
     parseTemplate: parseTemplate,
     build: build,
     gaps: gaps,

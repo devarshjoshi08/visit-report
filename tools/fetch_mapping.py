@@ -76,6 +76,31 @@ LIMIT 1 BY schoolCode
 SETTINGS max_execution_time = 120
 """
 
+# --all-schools: the same list, but deactivated schools kept and isActive reported as a
+# status column. The page shows status and never uses it to drop a visit, so a visit to a
+# deactivated or not-yet-started school still lands in the right state/project column
+# instead of falling into "Schools missing from School Details".
+ALL_SCHOOLS_SQL = """
+SELECT schoolCode, name, district, state, `po.name`, status
+FROM (
+    SELECT
+        s.schoolCode   AS schoolCode,
+        s.name         AS name,
+        s.district     AS district,
+        s.state        AS state,
+        po.name        AS `po.name`,
+        if(s.isActive, 'Active', 'Deactivated') AS status,
+        s.lastModified AS lastModified
+    FROM schools s
+    JOIN parentOrganizations po ON po.parentOrgId = s.parentOrgId
+    WHERE s.SBU = 'Ei Shiksha' AND po.category = 'paid'
+    ORDER BY lastModified DESC
+)
+WHERE schoolCode NOT IN ('', 'None', 'nan')
+LIMIT 1 BY schoolCode
+SETTINGS max_execution_time = 120
+"""
+
 
 def run(sql, fmt="TabSeparatedWithNames"):
     query = sql.strip().rstrip(";") + "\nFORMAT " + fmt
@@ -119,7 +144,10 @@ def load_aliases(path):
 def write_csv(rows, path, aliases=None):
     """Same column names the page already reads from a School Details export."""
     aliases = aliases or {}
+    with_status = any((r.get("status") or "").strip() for r in rows)
     header = ["schoolCode", "name", "district", "state", "po.name", "School code and Name"]
+    if with_status:
+        header.append("status")
     seen = set()
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -135,8 +163,11 @@ def write_csv(rows, path, aliases=None):
             name = (r.get("name") or "").strip()
             project = (r.get("po.name") or "").strip()
             project = aliases.get(project.lower(), project)
-            w.writerow([code, name, (r.get("district") or "").strip(), (r.get("state") or "").strip(),
-                        project, "(%s) %s" % (code, name)])
+            row = [code, name, (r.get("district") or "").strip(), (r.get("state") or "").strip(),
+                   project, "(%s) %s" % (code, name)]
+            if with_status:
+                row.append((r.get("status") or "").strip())
+            w.writerow(row)
             written += 1
     print("wrote %s — %d schools (%d rows from ClickHouse)" % (path, written, len(rows)))
 
@@ -180,6 +211,9 @@ if __name__ == "__main__":
     ap.add_argument("--sql", help="file with your own SELECT (must return schoolCode, name, state, po.name)")
     ap.add_argument("--out", default="schools.csv", help="where to write the mapping (default schools.csv)")
     ap.add_argument("--alias", help="CSV of from,to project-name fixes applied to po.name")
+    ap.add_argument("--all-schools", action="store_true",
+                    help="include deactivated schools and add a status column "
+                         "(default keeps only isActive = true)")
     ap.add_argument("--check", nargs=2, metavar=("MAPPING_CSV", "SCHOOL_DETAILS_CSV"),
                     help="compare a generated mapping with a School Details export")
     args = ap.parse_args()
@@ -191,5 +225,8 @@ if __name__ == "__main__":
         describe()
     else:
         need_credentials()
-        sql = open(args.sql, encoding="utf-8").read() if args.sql else DEFAULT_SQL
+        if args.sql:
+            sql = open(args.sql, encoding="utf-8").read()
+        else:
+            sql = ALL_SCHOOLS_SQL if args.all_schools else DEFAULT_SQL
         write_csv(parse_tsv(run(sql)), args.out, load_aliases(args.alias))

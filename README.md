@@ -25,17 +25,103 @@ Everything runs in the browser. No server, no Zoho login, no data leaves the dev
 
 ## Weekly use
 
-1. In the Zoho sheet, **File → Download as → CSV** on the **Daily Activity tracker 01 Oct** tab — the master sheet the form writes into — then the same on **School Details**. Those two are all it needs.
-2. Open the page, drop the CSV files on it.
+The only two things the page needs are the **log rows** and the **mapping**. Nothing else in the
+workbook is read, so the smallest possible weekly input is a two-column paste:
+
+| Header (row 1, spelled exactly) | Required | Holds |
+| --- | --- | --- |
+| `Date` | yes | The visit date — a real date cell, or text like `05-Sep-2026`. `05/09/2026` is read day-first. |
+| `School Code and Name` | yes | Column L as it stands, e.g. `(516114340) GPS Denwari`. The code is read out of it. |
+| `Name` | no | Who logged it. Only used to say who typed an entry that has no code. |
+
+Extra columns are ignored, so pasting more than this is fine. Column B is not needed — the code is
+read from `School Code and Name` directly, and more reliably than the sheet's own formula.
+
+1. In the Zoho sheet, open the **Daily Activity tracker 01 Oct** tab — the master sheet the form writes into — select the **Date** and **School Code and Name** columns, and paste them (values only) into a blank Excel sheet. Downloading the whole tab as CSV works identically, but Zoho is slow at it; pasting two columns is seconds.
+2. Open the page and drop that file on it, together with the school master list the first time. The mapping is remembered on the device, so from the second week on it is only the tracker paste.
 3. Pick the range — *Last full Saturday – Friday week* is the default — or set any From/To dates.
 4. **Copy table** puts it on the clipboard ready to paste into Excel, Zoho Sheet or an email. **Download Excel** gives a workbook with the report, the school-by-school list, and the two mapping lists below when they are not empty.
-5. Delete the CSV downloads afterwards if you prefer not to keep them.
+5. Delete the pasted file afterwards if you prefer not to keep it.
 
 The page remembers the last load on that device, so reopening it shows the same data without loading files again — use **Forget the saved export** to clear it.
 
-A full `.xlsx` download of the workbook also works (the whole workbook is about 5.5 MB), but the sheet's formula grid makes it slow to open in a browser. The two CSVs are a second's work.
+A full `.xlsx` download of the workbook also works (about 5.5 MB), but the sheet's formula grid makes it slow both to download from Zoho and to open in a browser. The two-column paste avoids both.
 
 Sheets are recognised by shape, not by file name, so you can drop every tab at once. The **SS Details** staff list is ignored on purpose: it also has a "Project Name" column, and an earlier version mistook it for the Report template and produced a table of zeros.
+
+### Where the mapping comes from
+
+There is no back end. The page is a single static HTML file and every number is counted in the
+browser. The school &rarr; state/project mapping can only come from one of two places:
+
+1. **A school list you drop on the page.** Normally the **School Details** tab of the tracker
+   export. Any sheet of the right shape works, so a separate master list of all schools can be
+   dropped instead — see the next section.
+2. **A `schools.csv` published next to `index.html`.** Fetched when the page opens, so the weekly
+   job is just the tracker export. Dropping a school list in afterwards replaces it for that
+   session.
+
+If a school code in the log is in neither, the visit is **not** counted in any column and the
+school is listed under *Schools missing from School Details* in card 4. That list is the reason
+schools go missing from the report — nothing is filtered out silently.
+
+### Project names: the P&G rollup
+
+The mapping list spells projects the way the warehouse does. There is **no value equal to `P&G`** —
+instead `Home base P&G Shiksha`, `School base P&G Shiksha`, `Govt Led P&G`, `Ghyanshala P&G`,
+`P&G Mindspark Maharashtra` and others. The report, meanwhile, has three columns headed `P&G`
+(Himachal Pradesh, Punjab, Telangana).
+
+So `report.js` carries an alias: **any project name containing `P&G` is matched to the `P&G`
+column.** Without it those three columns read zero while the schools sit under *Mapped schools with
+no column*. The rule lives in one place and is easy to change:
+
+```js
+var DEFAULT_ALIASES = [{ contains: 'p&g', as: 'P&G' }];
+```
+
+The raw name is kept for display, so the school-by-school list still shows `Home base P&G Shiksha`.
+A chip above the table reports how many school-days were counted through a rollup. `Prevail`,
+`Bharat EdTech Initiatives`, `Amazon Future Engineer` and `ITC Punjab` match the report exactly and
+need no alias.
+
+States in the mapping that have no report column at all — Uttar Pradesh, Tamil Nadu, Haryana,
+Delhi, West Bengal, Orissa and a few more — are not dropped silently. A visit to one of those shows
+up under *Mapped schools with no column*.
+
+### Removed schools
+
+The warehouse suffixes the code of a removed school: `262704Deleted`. These are read as the plain
+code `262704` and marked `Deactivated`, so a visit logged to one still lands in the right column
+instead of falling into the missing list. Excel's `121240.0` is handled the same way.
+
+Where the same code appears twice (a live row and a `Deleted` row, or a test row and a real one),
+the first row in the file wins. In the current list all 16 such pairs share the same state and
+project, so counting is unaffected — only the displayed school name can differ.
+
+### A master list of all schools
+
+The School Details tab only carries the schools someone added to it, which is why active schools
+can still be absent. A single master list of every school — active, deactivated and upcoming —
+fixes that for good. Build it as one sheet with a header row and these columns:
+
+| Column | Required | Notes |
+| --- | --- | --- |
+| `schoolCode` | yes | The number only, no brackets, no thousands separator, no decimal. This is what the log is matched on. |
+| `name` | yes | School name. |
+| `state` | yes | Must match the report's state names exactly: Andhra Pradesh, Bihar, Himachal Pradesh, Karnataka, Madhya Pradesh, Maharashtra, Punjab, Rajasthan, Telangana, Uttarakhand, Gujarat. |
+| `po.name` | yes | The project. Header may also be `project` or `project name`. Must match the report's project names exactly: `P&G`, `Bharat EdTech Initiatives`, `Prevail`, `ITC Punjab`, `Amazon Future Engineer`. Any other project name falls into that state's **All** column; if the state has no All column it is reported under *Mapped schools with no column*. |
+| `status` | no | `Active`, `Deactivated`, `Upcoming`, or a `TRUE`/`FALSE` flag. Shown for context and **never** used to drop a visit. Anything else is passed through as written. |
+| `district` | no | Carried for reference. |
+| `School code and Name` | no | `(516114340) GPS Denwari` form. Used as the fallback code source if `schoolCode` is blank, and as the label shown in the school-by-school list. |
+
+Extra columns are ignored, so an export with more fields than this is fine. If a code appears
+twice, the first row wins — so keep one row per school.
+
+Counting is unaffected by status: a visit to a deactivated or upcoming school is counted in its
+state/project column like any other, and the *School-days at schools not marked Active* chip says
+how many of the period's school-days those were. The point of including them is that the visit
+lands in the right column instead of falling into the missing list.
 
 ### Automatic mapping (optional)
 

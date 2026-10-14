@@ -39,6 +39,7 @@
   h2{font-size:15px; font-weight:600; margin:0; letter-spacing:-.01em;}
   p{margin:0;}
   .eyebrow{font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;}
+  .ver{display:inline-block; margin-left:8px; padding:1px 7px; border-radius:999px; background:var(--accent-wash); color:var(--accent-ink); letter-spacing:.06em;}
   .lede{color:var(--muted); max-width:66ch;}
   a{color:var(--accent-ink);}
 
@@ -100,14 +101,16 @@
 
 <div class="wrap">
   <header>
-    <p class="eyebrow">Ei field operations</p>
+    <p class="eyebrow">Ei field operations <span class="ver" id="ver"></span></p>
     <h1>School Visit Report Builder</h1>
     <p class="lede">Pick a date range and get the same daily table the Report tab produces &mdash; schools visited per day, by project and state. The tracker export is read here in your browser; nothing is uploaded anywhere.</p>
   </header>
 
   <section class="card">
     <div class="step"><span class="n">1</span><h2>Load the tracker export</h2></div>
-    <p class="hint">Two files. In the Zoho sheet, <b>File &rsaquo; Download as &rsaquo; CSV</b> on <b>Daily Activity tracker 01 Oct</b> &mdash; the form's master sheet, which every number below is counted from &mdash; and the same on <b>School Details</b>, used only to map each school to its state and project. School codes are read out of the brackets in <i>School Code and Name</i>, so column B is not needed. A full <code>.xlsx</code> download works too, but it is much slower to load.</p>
+    <p class="hint">Downloading from Zoho is slow, so the quick way is to <b>copy and paste</b>. In <b>Daily Activity tracker 01 Oct</b> &mdash; the form's master sheet, which every number below is counted from &mdash; select the <b>Date</b> and <b>School Code and Name</b> columns, paste them into a blank Excel sheet (values only), save, and drop that here. Only two columns are needed and their header names must be exactly <code>Date</code> and <code>School Code and Name</code>. Column B is not needed: the school code is read out of <i>School Code and Name</i> itself.</p>
+    <p class="hint">Keep the dates as real dates, or as text like <code>05-Sep-2026</code>. A date written <code>05/09/2026</code> is read day-first, the Indian way. A <b>File &rsaquo; Download as &rsaquo; CSV</b> of the whole tab works just as well if you prefer, and a full <code>.xlsx</code> works but is slow to load.</p>
+    <p class="hint">The mapping is never fetched from anywhere hidden: it is whichever school list you drop in &mdash; the <b>School Details</b> tab, or your own master list of every school (any sheet with <code>schoolCode</code>, <code>state</code> and a project column will do, and an optional <code>status</code> column is shown but never used to drop a visit). Drop it once and it is remembered on this device, so after that the weekly job is only the tracker paste. If a <code>schools.csv</code> is published next to this page it is loaded on open instead.</p>
     <div class="drop" id="drop">
       <p><b>Drop CSV or Excel files here</b></p>
       <button class="btn" type="button" id="pick">Choose files</button>
@@ -121,7 +124,7 @@
       <p class="hint" style="margin-top:10px;">If the sheet owner publishes those tabs in Zoho (<b>File &rsaquo; Publish</b>) and gives you CSV links, paste them here and the page fetches them each time. Links are remembered on this device only, and this works on the hosted copy of this page, not inside a preview.</p>
       <div class="row" style="margin-top:10px;">
         <div class="field" style="flex:1 1 280px;"><label for="urlLog">Activity log CSV link</label><input type="url" id="urlLog" placeholder="https://sheet.zoho.in/…" style="font:inherit; font-size:13px; padding:7px 9px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); width:100%;"></div>
-        <div class="field" style="flex:1 1 280px;"><label for="urlSchools">School Details CSV link</label><input type="url" id="urlSchools" placeholder="https://sheet.zoho.in/…" style="font:inherit; font-size:13px; padding:7px 9px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); width:100%;"></div>
+        <div class="field" style="flex:1 1 280px;"><label for="urlSchools">School mapping CSV link</label><input type="url" id="urlSchools" placeholder="https://sheet.zoho.in/…" style="font:inherit; font-size:13px; padding:7px 9px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); width:100%;"></div>
         <button class="btn" type="button" id="fetchUrls">Fetch</button>
       </div>
     </details>
@@ -173,7 +176,7 @@
     <p class="hint">Visits that the report cannot place, counted across the whole export. Clearing these is what keeps the weekly numbers complete.</p>
 
     <div>
-      <h3 style="font-size:14px; margin:0 0 6px;" id="missTitle">Schools missing from School Details</h3>
+      <h3 style="font-size:14px; margin:0 0 6px;" id="missTitle">Schools missing from the mapping list</h3>
       <p class="hint" id="missNote"></p>
       <div class="scroll" style="margin-top:8px; max-height:300px; overflow-y:auto;"><table id="missing"></table></div>
       <div class="row" style="margin-top:10px;">
@@ -201,10 +204,11 @@
   </section>
 
   <footer>
-    <p><b>Everything is counted from the master sheet</b> &mdash; <i>Daily Activity tracker 01 Oct</i>, the tab the form writes into. The school code is read from <i>School Code and Name</i>: brackets anywhere in the text first, then a bare run of five or more digits. The sheet's own helper column reads only brackets at the very start, so entries like <i>GPS Jhaldi Kanot (844247693)</i> break it &mdash; they are counted here. School Details is read only to look up each school's state and project.</p>
+    <p><b>Everything is counted from the master sheet</b> &mdash; <i>Daily Activity tracker 01 Oct</i>, the tab the form writes into. The school code is read from <i>School Code and Name</i>: brackets anywhere in the text first, then a bare run of five or more digits. The sheet's own helper column reads only brackets at the very start, so entries like <i>GPS Jhaldi Kanot (844247693)</i> break it &mdash; they are counted here. The mapping list is read only to look up each school's state and project &mdash; or, in its place, any master list of all schools. A <code>status</code> column there (Active / Deactivated / Upcoming) is shown for context and never used to drop a visit: every visit is counted in its state and project column whatever the status says.</p>
     <p><b>How a day is counted:</b> one school counts once per day, however many people logged a visit to it. A school lands in a column when its state matches and the column's project is <i>All</i> or matches that school's <code>po.name</code>. This is the same rule the Report tab uses.</p>
+    <p><b>Project rollup:</b> the mapping list spells projects the way the warehouse does, so there is no plain <i>P&amp;G</i> in it &mdash; only <i>Home base P&amp;G Shiksha</i>, <i>School base P&amp;G Shiksha</i>, <i>Govt Led P&amp;G</i> and so on. Any project name containing <b>P&amp;G</b> is counted in that state's <b>P&amp;G</b> column; without this the three P&amp;G columns would read zero. The school-by-school list still shows the real project name, and the chip above the table says how many school-days came through the rollup.</p>
     <p><b>Average %Visits</b> uses the Report tab's own formula: visits in the period &divide; (Total SS &times; days &times; 6/7). Total SS starts from the values in the Report tab as of 11 Sep 2026; edit any of them in the table and the change is remembered on this device.</p>
-    <p>Log rows with no school in brackets (project calls, leave, and so on) are skipped, and so are school codes that are missing from School Details &mdash; both are counted for you above the table.</p>
+    <p>Log rows with no school in brackets (project calls, leave, and so on) are skipped, and so are school codes that are missing from the mapping list &mdash; both are counted for you above the table.</p>
   </footer>
 </div>
 
@@ -215,6 +219,9 @@
   'use strict';
   var V = window.VisitReport;
   var $ = function (id) { return document.getElementById(id); };
+  /* Bump both of these on every change that goes live, so the page can be checked
+     against what was last published. Shown next to the title. */
+  var BUILD = { version: 9, date: '14 Oct 2026' };
   var state = { visits: null, schools: null, template: null, logInfo: null, sources: [], sample: true, ssOverride: null };
 
   /* ---------- sample data, so the page opens in a working state ---------- */
@@ -344,7 +351,7 @@
             if (!sd.count) return;
             if (state.sample) { state.sample = false; state.sources = []; }
             state.schools = sd.schools;
-            found.push({ label: 'School Details — ' + sd.count.toLocaleString() + ' schools', kind: 'schools', file: res.file });
+            found.push({ label: 'School mapping — ' + sd.count.toLocaleString() + ' schools', kind: 'schools', file: res.file });
           } else if (kind === 'report') {
             var tpl = V.parseTemplate(sheet.rows);
             if (!tpl) return;
@@ -354,7 +361,7 @@
           }
         });
       });
-      if (!found.length) { setBanner('Those files were not recognised. Export the Daily Activity tracker and School Details tabs as CSV and try again.', 'warn'); return; }
+      if (!found.length) { setBanner('Those files were not recognised. Check that row 1 has the headers Date and School Code and Name, then try again.', 'warn'); return; }
       state.sources = state.sources.concat(found);
       setBanner('');
       resetRange();
@@ -413,7 +420,7 @@
   var current = null, currentGaps = { missing: [], uncovered: [] };
   function render() {
     renderSources();
-    if (!state.visits || !state.schools) { setBanner('Load the activity log and School Details to build a report.', 'warn'); return; }
+    if (!state.visits || !state.schools) { setBanner('Load the tracker paste and the school mapping list to build a report.', 'warn'); return; }
     var from = $('from').value, to = $('to').value;
     if (!from || !to || from > to) { setBanner('Pick a start date on or before the end date.', 'warn'); return; }
 
@@ -452,11 +459,11 @@
   function renderGaps() {
     var g = currentGaps;
     var inRange = g.missing.filter(function (m) { return m.inRange; }).length;
-    $('missTitle').textContent = 'Schools missing from School Details — ' + g.missing.length +
+    $('missTitle').textContent = 'Schools missing from the mapping list — ' + g.missing.length +
       (g.missing.length ? ' (' + inRange + ' seen in the selected range)' : '');
     $('missNote').textContent = g.missing.length
-      ? 'These school codes appear in the master sheet but not in School Details, so their visits are not counted in any column. Add them to School Details with their state and project.'
-      : 'Every school in the master sheet is mapped. Nothing to add.';
+      ? 'These school codes appear in the tracker but not in the mapping list, so their visits are not counted in any column. Add them to the mapping list with their state and project.'
+      : 'Every school in the tracker is mapped. Nothing to add.';
 
     var html = '<thead><tr><th class="lab">School code</th><th style="text-align:left">Name as written in the log</th><th>Entries</th><th>First seen</th><th>Last seen</th><th>In range</th></tr></thead><tbody>';
     html += g.missing.map(function (m) {
@@ -475,9 +482,9 @@
     $('noCodeTitle').textContent = 'Entries with no school code — ' + nc.length +
       (nc.length ? ' (' + ncEntries + ' log rows)' : '');
     $('noCodeNote').textContent = nc.length
-      ? 'A school was typed into School Code and Name without a code in brackets, so neither this report nor the Zoho sheet can count it. Fix these in the tracker, or add the school to School Details and retype the entry.'
+      ? 'A school was typed into School Code and Name without a code in brackets, so neither this report nor the Zoho sheet can count it. Fix these in the tracker, or add the school to the mapping list and retype the entry.'
       : 'Every entry with a school name carries a readable code.';
-    var nhtml = '<thead><tr><th class="lab">Typed as</th><th style="text-align:left">Logged by</th><th>Entries</th><th>First seen</th><th>Last seen</th><th style="text-align:left">Closest school in School Details</th></tr></thead><tbody>';
+    var nhtml = '<thead><tr><th class="lab">Typed as</th><th style="text-align:left">Logged by</th><th>Entries</th><th>First seen</th><th>Last seen</th><th style="text-align:left">Closest school in the mapping list</th></tr></thead><tbody>';
     nhtml += nc.map(function (e) {
       return '<tr><th class="lab">' + esc(e.text) + '</th>' +
         '<td style="text-align:left">' + esc(e.who || '—') + '</td>' +
@@ -492,7 +499,7 @@
 
     $('uncovTitle').textContent = 'Mapped schools with no column in the report — ' + g.uncovered.length;
     $('uncovNote').textContent = g.uncovered.length
-      ? 'These schools are in School Details, but their state and project pair has no column in the report, so their visits land nowhere. Either add a column to the template or fold the project into an “All” column for that state.'
+      ? 'These schools are in the mapping list, but their state and project pair has no column in the report, so their visits land nowhere. Either add a column to the template or fold the project into an “All” column for that state.'
       : 'Every mapped school falls into one of the report columns.';
     var uhtml = '<thead><tr><th class="lab">State</th><th style="text-align:left">Project (po.name)</th><th>Schools</th><th>Entries</th><th>First seen</th><th>Last seen</th></tr></thead><tbody>';
     uhtml += g.uncovered.map(function (u) {
@@ -520,7 +527,9 @@
       ['Different schools', s.distinctSchools],
       ['Visit entries', s.visitRows]
     ];
-    if (s.unknownVisits) bits.push(['Entries with a code not in School Details', s.unknownVisits]);
+    if (s.unknownVisits) bits.push(['Entries with a code not in the mapping list', s.unknownVisits]);
+    if (s.notActiveSchoolDays) bits.push(['School-days at schools not marked Active', s.notActiveSchoolDays]);
+    if (s.rolledUpSchoolDays) bits.push(['School-days counted through a project rollup', s.rolledUpSchoolDays]);
     var li = state.logInfo || {};
     if (li.byRule && li.byRule['bare digits']) bits.push(['Codes read without brackets', li.byRule['bare digits']]);
     if (li.skippedNoSchool) bits.push(['Entries with no school code', li.skippedNoSchool]);
@@ -576,13 +585,20 @@
     });
   }
 
+  function hasStatus() {
+    return (current && current.detail || []).some(function (d) { return d.status; });
+  }
+
   function renderDetail() {
     var rows = current.detail;
+    var withStatus = hasStatus();
     $('detailWrap').open = false;
-    var html = '<thead><tr><th class="lab">Date</th><th style="text-align:left">School</th><th style="text-align:left">State</th><th style="text-align:left">Project</th></tr></thead><tbody>';
+    var html = '<thead><tr><th class="lab">Date</th><th style="text-align:left">School</th><th style="text-align:left">State</th><th style="text-align:left">Project</th>' +
+      (withStatus ? '<th style="text-align:left">Status</th>' : '') + '</tr></thead><tbody>';
     html += rows.map(function (d) {
-      return '<tr><th class="lab">' + esc(V.isoToLabel(d.date)) + '</th><td style="text-align:left">' + esc(d.label) + '</td><td style="text-align:left">' + esc(d.state) + '</td><td style="text-align:left">' + esc(d.project) + '</td></tr>';
-    }).join('') || '<tr><td colspan="4" style="text-align:left" class="hint">No school visits in this range.</td></tr>';
+      return '<tr><th class="lab">' + esc(V.isoToLabel(d.date)) + '</th><td style="text-align:left">' + esc(d.label) + '</td><td style="text-align:left">' + esc(d.state) + '</td><td style="text-align:left">' + esc(d.project) + '</td>' +
+        (withStatus ? '<td style="text-align:left">' + esc(d.status || '') + '</td>' : '') + '</tr>';
+    }).join('') || '<tr><td colspan="' + (withStatus ? 5 : 4) + '" style="text-align:left" class="hint">No school visits in this range.</td></tr>';
     $('detail').innerHTML = html + '</tbody>';
   }
 
@@ -634,9 +650,11 @@
   });
   $('copyDetail').addEventListener('click', function () {
     if (!current) return;
-    var text = ['Date\tSchool\tState\tProject'].concat(current.detail.map(function (d) {
-      return [V.isoToLabel(d.date), d.label, d.state, d.project].join('\t');
-    })).join('\n');
+    var ws = hasStatus();
+    var text = [['Date', 'School', 'State', 'Project'].concat(ws ? ['Status'] : []).join('\t')]
+      .concat(current.detail.map(function (d) {
+        return [V.isoToLabel(d.date), d.label, d.state, d.project].concat(ws ? [d.status || ''] : []).join('\t');
+      })).join('\n');
     copyText(text, 'School list copied.');
   });
   $('copyNoCode').addEventListener('click', function () {
@@ -657,7 +675,7 @@
     var text = missingTSV();
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () {
-        done.textContent = 'Copied — paste into School Details and fill in state and project.';
+        done.textContent = 'Copied — paste into the mapping list and fill in state and project.';
         setTimeout(function () { done.textContent = ''; }, 3000);
       });
     } else { fallbackCopy(text, function () { done.textContent = 'Copied.'; }); }
@@ -667,7 +685,7 @@
     var csv = missingTSV().split('\n').map(function (line) {
       return line.split('\t').map(function (c) { return /[",]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(',');
     }).join('\n');
-    download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), 'Schools to add to School Details.csv');
+    download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), 'Schools to add to the mapping list.csv');
   });
 
   $('csv').addEventListener('click', function () {
@@ -682,8 +700,8 @@
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(V.toMatrix(current)), 'Report');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(
-      [['Date', 'School', 'State', 'Project']].concat(current.detail.map(function (d) {
-        return [V.isoToLabel(d.date), d.label, d.state, d.project];
+      [['Date', 'School', 'State', 'Project'].concat(hasStatus() ? ['Status'] : [])].concat(current.detail.map(function (d) {
+        return [V.isoToLabel(d.date), d.label, d.state, d.project].concat(hasStatus() ? [d.status || ''] : []);
       }))), 'Schools visited');
     if (currentGaps.missing.length) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(
@@ -695,7 +713,7 @@
     var ncRows = (state.logInfo && state.logInfo.noCode) || [];
     if (ncRows.length) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(
-        [['Typed as', 'Logged by', 'Entries', 'First seen', 'Last seen', 'Closest school in School Details', 'Match %']]
+        [['Typed as', 'Logged by', 'Entries', 'First seen', 'Last seen', 'Closest school in the mapping list', 'Match %']]
           .concat(ncRows.map(function (e) {
             return [e.text, e.who || '', e.entries, V.isoToLabel(e.first), V.isoToLabel(e.last),
               e.suggestion ? e.suggestion.label : '', e.suggestion ? e.suggestion.score : ''];
@@ -769,6 +787,8 @@
     }).catch(function () { /* no mapping file published — the School Details CSV is used instead */ });
   }
 
+  $('ver').textContent = 'v' + BUILD.version + ' \u00b7 ' + BUILD.date;
+  document.title = 'School Visit Report Builder \u2014 v' + BUILD.version;
   if (!loadCache()) loadSample();
   resetRange();
   render();

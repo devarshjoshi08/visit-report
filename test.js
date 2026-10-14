@@ -173,5 +173,108 @@ console.log('fallback template');
 const rep2 = V.build({ visits: log.visits, schools: sd.schools, from: '2026-09-05', to: '2026-09-11' });
 eq('built-in template still counts', rep2.colTotal.reduce((a, b) => a + b, 0), 5);
 
+/* master school list: all schools, whatever their status, with the status carried not applied */
+console.log('master school list with a status column');
+const masterCSV = [
+  'schoolCode,name,district,state,project,status,School code and Name',
+  '111111,GPS Alpha,Shimla,Himachal Pradesh,Prevail,Active,(111111) GPS Alpha',
+  '222222,GPS Beta,Shimla,Himachal Pradesh,P&G,Deactivated,(222222) GPS Beta',
+  '333333,GHS Gamma,Jaipur,Rajasthan,P&G,Upcoming,(333333) GHS Gamma',
+  '444444,ZPHS Delta,Khammam,Telangana,Amazon Future Engineer,FALSE,(444444) ZPHS Delta',
+  '555555,GSSS Epsilon,Mandi,Himachal Pradesh,Bharat EdTech Initiatives,TRUE,(555555) GSSS Epsilon'
+].join('\n');
+const masterRows = V.parseCSV(masterCSV);
+eq('master list recognised as the mapping', V.classify(masterRows, 'All Schools.csv'), 'schools');
+const sdM = V.parseSchools(masterRows);
+eq('every school in the master list is mapped', sdM.count, 5);
+eq('Active kept as Active', sdM.schools['111111'].status, 'Active');
+eq('Deactivated kept as Deactivated', sdM.schools['222222'].status, 'Deactivated');
+eq('Upcoming kept as Upcoming', sdM.schools['333333'].status, 'Upcoming');
+eq('FALSE reads as Deactivated', sdM.schools['444444'].status, 'Deactivated');
+eq('TRUE reads as Active', sdM.schools['555555'].status, 'Active');
+eq('project column named "project" still maps', sdM.schools['222222'].projectLabel, 'P&G');
+const repM = V.build({ visits: log.visits, schools: sdM.schools, template: tpl, from: '2026-09-05', to: '2026-09-11' });
+eq('status never excludes a visit', repM.colTotal.reduce((a, b) => a + b, 0), 5);
+eq('grand total unchanged by status', repM.grandTotal, rep.grandTotal);
+eq('school-days at schools not marked Active are counted and flagged', repM.stats.notActiveSchoolDays, 3);
+eq('status travels into the school list', repM.detail.every(d => d.status), true);
+eq('no status column leaves status empty', V.build({ visits: log.visits, schools: sd.schools, template: tpl, from: '2026-09-05', to: '2026-09-11' }).stats.notActiveSchoolDays, 0);
+eq('blank status is not reported as a gap', V.statusLabel(''), '');
+eq('unrecognised status passes through as written', V.statusLabel('Paused for exams'), 'Paused for exams');
+
+/* the five columns Devarsh will supply, with his own header spellings */
+console.log('five-column mapping, no status column');
+const fiveCSV = [
+  'SchoolCode,schoolname,district,state,project name',
+  '111111,GPS Alpha,Shimla,Himachal Pradesh,Prevail',
+  '222222,GPS Beta,Shimla,Himachal Pradesh,P&G',
+  '333333,GHS Gamma,Jaipur,Rajasthan,P&G',
+  '444444,ZPHS Delta,Khammam,Telangana,Amazon Future Engineer',
+  '555555,GSSS Epsilon,Mandi,Himachal Pradesh,Bharat EdTech Initiatives'
+].join('\n');
+const fiveRows = V.parseCSV(fiveCSV);
+eq('five-column sheet recognised as the mapping', V.classify(fiveRows, 'mapping.csv'), 'schools');
+const sd5 = V.parseSchools(fiveRows);
+eq('all five schools mapped', sd5.count, 5);
+eq('schoolname header read as the school name', sd5.schools['111111'].name, 'GPS Alpha');
+eq('label falls back to the school name', sd5.schools['111111'].label, 'GPS Alpha');
+eq('project name header read as the project', sd5.schools['222222'].projectLabel, 'P&G');
+eq('state read', sd5.schools['444444'].stateLabel, 'Telangana');
+eq('no status column leaves status blank', sd5.schools['111111'].status, '');
+const rep5 = V.build({ visits: log.visits, schools: sd5.schools, template: tpl, from: '2026-09-05', to: '2026-09-11' });
+eq('five-column mapping counts the same as School Details', rep5.grandTotal, rep.grandTotal);
+eq('five-column mapping column totals match', rep5.colTotal.join(','), rep.colTotal.join(','));
+eq('nothing reported missing', V.gaps({ visits: log.visits, schools: sd5.schools, template: tpl, from: '2026-09-05', to: '2026-09-11' }).missing.length, 1);
+eq('no status means nothing flagged as inactive', rep5.stats.notActiveSchoolDays, 0);
+
+/* the real warehouse list: no value equals 'P&G', and removed schools carry a suffix */
+console.log('warehouse mapping: project aliases and Deleted-suffix codes');
+const whCSV = [
+  'schoolCode,name,district,state,po.name',
+  '111111,GPS Alpha,Shimla,Himachal Pradesh,Prevail',
+  '222222,GPS Beta,Shimla,Himachal Pradesh,Home base P&G Shiksha',
+  '333333,GHS Gamma,Jaipur,Rajasthan,School base P&G Shiksha',
+  '444444,ZPHS Delta,Khammam,Telangana,Amazon Future Engineer',
+  '555555,GSSS Epsilon,Mandi,Himachal Pradesh,Bharat EdTech Initiatives',
+  '666666Deleted,GSSS Zeta,Solan,Himachal Pradesh,School base P&G Shiksha',
+  '777777.0,GSSS Eta,Mandi,Himachal Pradesh,Govt Led P&G'
+].join('\n');
+const whRows = V.parseCSV(whCSV);
+const sdW = V.parseSchools(whRows);
+eq('every warehouse row mapped', sdW.count, 7);
+eq('Home base P&G Shiksha rolls into the P&G column', sdW.schools['222222'].project, 'p&g');
+eq('School base P&G Shiksha rolls into the P&G column', sdW.schools['333333'].project, 'p&g');
+eq('Govt Led P&G rolls into the P&G column', sdW.schools['777777'].project, 'p&g');
+eq('the raw project name is kept for display', sdW.schools['222222'].projectLabel, 'Home base P&G Shiksha');
+eq('a non-P&G project is untouched', sdW.schools['111111'].project, 'prevail');
+eq('Deleted suffix stripped off the code', !!sdW.schools['666666'], true);
+eq('Deleted suffix read as a deactivated school', sdW.schools['666666'].status, 'Deactivated');
+eq('Excel .0 stripped off the code', !!sdW.schools['777777'], true);
+eq('a clean code has no status', sdW.schools['111111'].status, '');
+eq('cleanCode rejects a non-code', V.cleanCode('GPS Somewhere'), null);
+eq('cleanCode keeps a plain number', V.cleanCode(121240).code, '121240');
+
+/* the P&G column must now actually count, and the rollup must be reported */
+const whLog = V.parseCSV([
+  'Date,School Code and Name',
+  '05-Sep-2026,(222222) GPS Beta',
+  '06-Sep-2026,(666666) GSSS Zeta',
+  '07-Sep-2026,(111111) GPS Alpha'
+].join('\n'));
+const lgW = V.parseLog(whLog);
+const repW = V.build({ visits: lgW.visits, schools: sdW.schools, template: tpl, from: '2026-09-05', to: '2026-09-11' });
+const hpPG = tpl.columns.findIndex(c => c.state === 'Himachal Pradesh' && c.project === 'P&G');
+const hpPrevail = tpl.columns.findIndex(c => c.state === 'Himachal Pradesh' && c.project === 'Prevail');
+eq('P&G/Himachal Pradesh now counts both P&G Shiksha visits', repW.colTotal[hpPG], 2);
+eq('Prevail/Himachal Pradesh unaffected', repW.colTotal[hpPrevail], 1);
+eq('rolled-up school-days reported', repW.stats.rolledUpSchoolDays, 2);
+eq('no school left unmapped', repW.stats.unknownCodes, 0);
+eq('rolled-up school still shows its real project name', repW.detail.find(d => d.code === '222222').project, 'Home base P&G Shiksha');
+
+/* without the alias the same list would leave the P&G column empty - the bug this fixes */
+const sdNoAlias = V.parseSchools(whRows, { aliases: [] });
+const repNoAlias = V.build({ visits: lgW.visits, schools: sdNoAlias.schools, template: tpl, from: '2026-09-05', to: '2026-09-11' });
+eq('without the alias P&G/Himachal Pradesh reads zero', repNoAlias.colTotal[hpPG], 0);
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
