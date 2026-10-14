@@ -57,6 +57,20 @@
     return p[2] + ' ' + names[+p[1] - 1] + ' ' + p[0];
   }
 
+  /* The Saturday-Friday week that CONTAINS the given date (the report's week shape). */
+  function satFriWeekOf(iso) {
+    var day = new Date(iso + 'T00:00:00Z').getUTCDay();   // 0 Sun .. 6 Sat
+    var to = shiftDays(iso, -((day - 5 + 7) % 7));        // the Friday on or before
+    if (to < iso) to = shiftDays(to, 7);                  // ..but not before the date itself
+    return { from: shiftDays(to, -6), to: to };
+  }
+
+  function shiftDays(iso, n) {
+    var d = new Date(iso + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+
   function datesBetween(from, to) {
     var out = [], d = new Date(from + 'T00:00:00Z'), end = new Date(to + 'T00:00:00Z');
     while (d <= end) {
@@ -521,6 +535,8 @@
     toISO: toISO,
     isoToLabel: isoToLabel,
     datesBetween: datesBetween,
+    satFriWeekOf: satFriWeekOf,
+    shiftDays: shiftDays,
     DEFAULT_TEMPLATE: DEFAULT_TEMPLATE
   };
 });

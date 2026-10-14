@@ -73,6 +73,9 @@
 
   .banner{border:1px solid var(--line); background:var(--flag-wash); color:var(--flag); border-radius:8px; padding:9px 12px; font-size:13px;}
   .banner.sample{background:var(--accent-wash); color:var(--accent-ink); border-color:transparent;}
+  .note{border:1px solid var(--line); background:var(--surface-2); border-radius:8px; padding:9px 12px; font-size:13px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;}
+  .note.warn{background:var(--flag-wash); color:var(--flag); border-color:transparent;}
+  .note .btn{padding:4px 10px; font-size:13px;}
 
   .scroll{overflow-x:auto; border:1px solid var(--line); border-radius:8px; background:var(--surface);}
   table{border-collapse:separate; border-spacing:0; width:100%; font-size:13px; font-variant-numeric:tabular-nums;}
@@ -157,6 +160,7 @@
     <div class="step"><span class="n">3</span><h2>Take the report</h2></div>
     <div id="banner"></div>
     <div class="chips" id="chips"></div>
+    <div id="rangeNote"></div>
     <div class="scroll"><table id="table"></table></div>
     <div class="row">
       <button class="btn primary" type="button" id="copy">Copy table</button>
@@ -221,7 +225,7 @@
   var $ = function (id) { return document.getElementById(id); };
   /* Bump both of these on every change that goes live, so the page can be checked
      against what was last published. Shown next to the title. */
-  var BUILD = { version: 9, date: '14 Oct 2026' };
+  var BUILD = { version: 10, date: '14 Oct 2026' };
   var state = { visits: null, schools: null, template: null, logInfo: null, sources: [], sample: true, ssOverride: null };
 
   /* ---------- sample data, so the page opens in a working state ---------- */
@@ -451,6 +455,7 @@
     }
 
     renderChips();
+    renderRangeNote();
     renderTable();
     renderDetail();
     renderGaps();
@@ -516,6 +521,47 @@
       .concat(currentGaps.missing.map(function (m) {
         return [m.code, m.label, m.entries, V.isoToLabel(m.first), V.isoToLabel(m.last), m.inRange || 0].join('\t');
       })).join('\n');
+  }
+
+  /* The default range is the last full Saturday-Friday week, measured from today.
+     Run on a Wednesday it ends the previous Friday, so the newest days in the file
+     are outside it and their rows are simply not drawn. That looked like "the
+     report shows 0 for yesterday", so say it plainly and offer the jump. */
+  function renderRangeNote() {
+    var el = $('rangeNote');
+    el.innerHTML = '';
+    if (state.sample || !state.visits || !state.visits.length) return;
+    var to = $('to').value, t = today();
+    var after = 0, future = 0, latest = null;
+    state.visits.forEach(function (v) {
+      if (v.date <= to) return;
+      if (v.date > t) { future++; return; }     // mistyped future dates are not real data
+      after++;
+      if (!latest || v.date > latest) latest = v.date;
+    });
+    if (!after && !future) return;
+    var empty = current && current.grandTotal === 0;
+    var msg = '';
+    if (after) {
+      msg = 'This file has <b>' + after.toLocaleString() + '</b> more visit' + (after === 1 ? '' : 's') +
+        ' dated after ' + esc(V.isoToLabel(to)) + ', the latest on <b>' + esc(V.isoToLabel(latest)) + '</b>. ' +
+        (empty ? 'Nothing falls inside the dates picked above.'
+               : 'They are outside the dates picked above, so they are not in the table.');
+    } else {
+      msg = 'The only entries after ' + esc(V.isoToLabel(to)) + ' are <b>' + future +
+        '</b> dated in the future, which are typos in the tracker rather than visits.';
+    }
+    var week = latest ? V.satFriWeekOf(latest) : null;
+    el.innerHTML = '<div class="note' + (empty ? ' warn' : '') + '"><span>' + msg + '</span>' +
+      (week ? '<button class="btn" type="button" id="jumpLatest">Show ' +
+        esc(V.isoToLabel(week.from)) + ' &ndash; ' + esc(V.isoToLabel(week.to)) + '</button>' : '') + '</div>';
+    if (week) {
+      $('jumpLatest').addEventListener('click', function () {
+        $('from').value = week.from; $('to').value = week.to;
+        $('preset').value = 'custom';
+        render();
+      });
+    }
   }
 
   function renderChips() {

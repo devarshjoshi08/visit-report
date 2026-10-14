@@ -276,5 +276,14 @@ const sdNoAlias = V.parseSchools(whRows, { aliases: [] });
 const repNoAlias = V.build({ visits: lgW.visits, schools: sdNoAlias.schools, template: tpl, from: '2026-09-05', to: '2026-09-11' });
 eq('without the alias P&G/Himachal Pradesh reads zero', repNoAlias.colTotal[hpPG], 0);
 
+/* the Saturday-Friday week containing a date - what the "show the latest week" jump uses */
+console.log('week containing a date');
+eq('Tuesday 13 Oct 2026 sits in 10-16 Oct', JSON.stringify(V.satFriWeekOf('2026-10-13')), '{"from":"2026-10-10","to":"2026-10-16"}');
+eq('a Saturday starts its own week', JSON.stringify(V.satFriWeekOf('2026-10-10')), '{"from":"2026-10-10","to":"2026-10-16"}');
+eq('a Friday ends its own week', JSON.stringify(V.satFriWeekOf('2026-10-09')), '{"from":"2026-10-03","to":"2026-10-09"}');
+eq('a Sunday sits in the week that began the day before', JSON.stringify(V.satFriWeekOf('2026-10-11')), '{"from":"2026-10-10","to":"2026-10-16"}');
+eq('the week is always 7 days', V.datesBetween(V.satFriWeekOf('2026-10-13').from, V.satFriWeekOf('2026-10-13').to).length, 7);
+eq('13 Oct is inside its own week', V.datesBetween(V.satFriWeekOf('2026-10-13').from, V.satFriWeekOf('2026-10-13').to).indexOf('2026-10-13') > -1, true);
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
