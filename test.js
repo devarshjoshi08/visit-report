@@ -285,5 +285,26 @@ eq('a Sunday sits in the week that began the day before', JSON.stringify(V.satFr
 eq('the week is always 7 days', V.datesBetween(V.satFriWeekOf('2026-10-13').from, V.satFriWeekOf('2026-10-13').to).length, 7);
 eq('13 Oct is inside its own week', V.datesBetween(V.satFriWeekOf('2026-10-13').from, V.satFriWeekOf('2026-10-13').to).indexOf('2026-10-13') > -1, true);
 
+/* Timezone. The counts were a day early for every user east of UTC because the xlsx
+   reader handed back a Date a few seconds short of local midnight. Run this file under
+   TZ=Asia/Kolkata and these must still pass. */
+console.log('dates do not drift with the timezone (TZ=' + (process.env.TZ || 'unset') + ')');
+eq('Excel serial is read the same in every zone', V.toISO(46308), '2026-10-13');
+eq('serial that arrived as text', V.toISO('46308'), '2026-10-13');
+eq('a Date at local midnight', V.toISO(new Date(2026, 9, 13, 0, 0, 0)), '2026-10-13');
+eq('a Date 10 seconds short of midnight rounds up, not down',
+  V.toISO(new Date(2026, 9, 12, 23, 59, 50)), '2026-10-13');
+eq('a Date a minute past midnight stays put', V.toISO(new Date(2026, 9, 13, 0, 1, 0)), '2026-10-13');
+eq('midday stays on its own day', V.toISO(new Date(2026, 9, 13, 11, 59, 0)), '2026-10-13');
+eq('text dates are untouched by the zone', V.toISO('13-Oct-2026'), '2026-10-13');
+eq('day-first text dates are untouched by the zone', V.toISO('13/10/2026'), '2026-10-13');
+eq('the week containing 13 Oct is stable', JSON.stringify(V.satFriWeekOf('2026-10-13')), '{"from":"2026-10-10","to":"2026-10-16"}');
+const tzLog = V.parseLog(V.parseCSV([
+  'Date,School Code and Name',
+  '46308,(111111) GPS Alpha',
+  '13-Oct-2026,(222222) GPS Beta'
+].join('\n')));
+eq('both date spellings land on 13 Oct', tzLog.visits.map(v => v.date).join(','), '2026-10-13,2026-10-13');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

@@ -225,7 +225,7 @@
   var $ = function (id) { return document.getElementById(id); };
   /* Bump both of these on every change that goes live, so the page can be checked
      against what was last published. Shown next to the title. */
-  var BUILD = { version: 10, date: '14 Oct 2026' };
+  var BUILD = { version: 11, date: '14 Oct 2026' };
   var state = { visits: null, schools: null, template: null, logInfo: null, sources: [], sample: true, ssOverride: null };
 
   /* ---------- sample data, so the page opens in a working state ---------- */
@@ -316,7 +316,12 @@
       if (/\.(xlsx|xls)$/i.test(file.name)) {
         fr.onload = function () {
           try {
-            var wb = XLSX.read(new Uint8Array(fr.result), { type: 'array', cellDates: true });
+            /* cellDates:false on purpose. With cellDates:true SheetJS builds a local-time
+               Date, and in some zones (IST among them) that lands a few seconds before
+               midnight - 'Fri Oct 02 2026 23:59:50 GMT+0530' for a cell reading 03-Oct -
+               so every date was read one day early. Raw Excel serial numbers carry no
+               timezone at all and toISO converts them with UTC maths. */
+            var wb = XLSX.read(new Uint8Array(fr.result), { type: 'array', cellDates: false });
             var sheets = wb.SheetNames.map(function (name) {
               return { name: name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: '', blankrows: false }) };
             });

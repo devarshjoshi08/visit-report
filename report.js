@@ -22,7 +22,15 @@
      Text is read day-first (05/09/2026 = 5 September), which is how the tracker writes them. */
   function toISO(value) {
     if (value == null || value === '') return null;
-    if (value instanceof Date && !isNaN(value)) return iso(value.getFullYear(), value.getMonth() + 1, value.getDate());
+    if (value instanceof Date && !isNaN(value)) {
+      /* A date cell carries no time of day, so anything other than midnight is noise from
+         the reader. In some zones SheetJS lands a few seconds BEFORE midnight, which would
+         truncate to the previous day, so round to the nearest midnight rather than down. */
+      var d = new Date(value.getTime());
+      var mins = d.getHours() * 60 + d.getMinutes();
+      if (mins >= 720) d = new Date(d.getTime() + (1440 - mins) * 60000);
+      return iso(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    }
     if (typeof value === 'number' && isFinite(value)) {
       if (value < 1 || value > 80000) return null;
       var ms = Math.round((value - 25569) * 86400000);

@@ -205,6 +205,27 @@ The page also lists the visits it cannot place, across the whole export — this
 
 Both lists are also added as extra sheets to the Excel download.
 
+### Timezones (fixed in v11 — do not undo)
+
+`.xlsx` files are read with `cellDates: false`, so date cells arrive as raw Excel serial
+numbers and `toISO()` converts them with UTC arithmetic. **Do not switch `cellDates` back on.**
+With `cellDates: true` SheetJS builds a local-time `Date`, and in several zones — India among
+them — that lands a few seconds *before* midnight (`Fri Oct 02 2026 23:59:50 GMT+0530` for a
+cell reading 03-Oct). Truncating that to a date gives the previous day, so every visit was
+counted one day early and the newest day in the file always read zero. It is invisible in UTC,
+which is why it survived several rounds of testing.
+
+`toISO()` also rounds a `Date` to the nearest midnight rather than truncating, as a second line
+of defence for dates that arrive from anywhere else.
+
+Run the suite under a non-UTC zone before shipping a date change:
+
+```bash
+node test.js
+TZ=Asia/Kolkata node test.js
+TZ=America/Los_Angeles node test.js
+```
+
 ## Maintenance
 
 - **Columns are built in** (15 project/state columns, matching the Report tab as of 11 Sep 2026). To change them, edit `DEFAULT_TEMPLATE` in `report.js`. Dropping a Report tab CSV also overrides them for that session, but it is not needed.
